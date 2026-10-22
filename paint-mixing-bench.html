@@ -1,0 +1,1082 @@
+<title>Paint Mixing Bench</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/mixbox@2.0.0/mixbox.js"></script>
+<style>
+/* Layout: a painter's bench in three columns (palette · mixing slab · reference photo), stacking to one on phones.
+   Swatches always sit on a Munsell N5 neutral surround so colour judgements aren't skewed by the page. */
+:root {
+  --bg: #e3e4e1;
+  --surface: #f4f4f2;
+  --surface-2: #ebebe8;
+  --ink: #1b1c1e;
+  --muted: #5b5e63;
+  --line: #cbccc8;
+  --accent: #2c3b92;
+  --accent-ink: #ffffff;
+  --n5: #777777;
+  --good: #2f7d4f;
+  --warn: #a8700f;
+  --bad: #b23a2c;
+  --shadow: 0 1px 2px rgba(20,22,26,.06), 0 4px 14px rgba(20,22,26,.06);
+  --f-display: "Young Serif", Georgia, "Times New Roman", serif;
+  --f-body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #191a1c; --surface: #232427; --surface-2: #2b2c30; --ink: #ebebe8; --muted: #9b9ea4;
+    --line: #37393d; --accent: #9aa8ff; --accent-ink: #12142a; --n5: #777777;
+    --good: #5cc488; --warn: #e0a640; --bad: #ef7a6a; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #191a1c; --surface: #232427; --surface-2: #2b2c30; --ink: #ebebe8; --muted: #9b9ea4;
+  --line: #37393d; --accent: #9aa8ff; --accent-ink: #12142a; --n5: #777777;
+  --good: #5cc488; --warn: #e0a640; --bad: #ef7a6a; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.25);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.45; }
+.wrap { max-width: 1480px; margin: 0 auto; padding-block: 20px 40px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 24px; margin-bottom: 18px; }
+h1 { font-family: var(--f-display); font-weight: 400; font-size: clamp(26px, 3.2vw, 36px); margin: 0; letter-spacing: -.01em; text-wrap: balance; }
+header.top p { margin: 0; color: var(--muted); max-width: 62ch; }
+h2 { font-family: var(--f-display); font-weight: 400; font-size: 21px; margin: 0; }
+h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; margin: 0; }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+
+.bench { display: grid; gap: 16px; grid-template-columns: 1fr; grid-template-areas: "mix" "photo" "chart" "palette"; align-items: start; }
+@media (min-width: 780px) { .bench { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); grid-template-areas: "palette mix" "photo photo" "chart chart"; } }
+@media (min-width: 1200px) { .bench { grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr) minmax(0, 1.2fr); grid-template-areas: "palette mix photo" "chart chart chart"; } }
+.chart { grid-area: chart; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 14px; min-width: 0; box-shadow: var(--shadow); }
+.panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.palette { grid-area: palette; }
+.mix { grid-area: mix; }
+.photo { grid-area: photo; }
+
+button, .btn { font: inherit; font-size: 14px; font-weight: 600; border-radius: 9px; border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); padding: 7px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; line-height: 1.2; }
+button:hover, .btn:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.primary:hover { filter: brightness(1.08); }
+button.ghost { background: transparent; border-color: transparent; color: var(--muted); padding: 5px 8px; }
+button.ghost:hover { color: var(--ink); border-color: var(--line); }
+button:disabled { opacity: .5; cursor: default; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input[type="text"], select { font: inherit; font-size: 14px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; min-width: 0; }
+
+/* palette */
+.paint-list { display: flex; flex-direction: column; gap: 4px; }
+.paint { display: grid; grid-template-columns: 30px minmax(0,1fr) auto; align-items: center; gap: 10px; padding: 5px 6px 5px 5px; border-radius: 10px; border: 1px solid transparent; }
+.paint.active { background: var(--surface-2); border-color: var(--line); }
+.tube { width: 30px; height: 30px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.18), inset -3px -4px 6px rgba(0,0,0,.18), inset 3px 3px 5px rgba(255,255,255,.22); }
+.paint-name { font-weight: 500; min-width: 0; overflow-wrap: anywhere; }
+.paint-name small { display: block; color: var(--muted); font-weight: 400; font-size: 12px; }
+.stepper { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--surface); }
+.stepper button { border: 0; border-radius: 0; background: transparent; width: 32px; height: 30px; justify-content: center; padding: 0; font-size: 17px; font-weight: 500; }
+.stepper button:hover { background: var(--surface-2); }
+.stepper output { min-width: 26px; text-align: center; font-family: var(--f-mono); font-size: 14px; }
+.paint.active .stepper output { font-weight: 600; }
+.empty { border: 1px dashed var(--line); border-radius: 10px; padding: 14px; color: var(--muted); text-align: center; }
+
+/* palette builder */
+.builder { border-top: 1px solid var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 12px; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.presets button { font-size: 13px; padding: 6px 10px; }
+.family { display: flex; flex-direction: column; gap: 6px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 13px; font-weight: 500; padding: 4px 10px 4px 4px; border-radius: 999px; gap: 7px; background: var(--surface); }
+.chip .dot { width: 18px; height: 18px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.2); flex: none; }
+.chip[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+.chip[aria-pressed="true"]::after { content: "✓"; color: var(--accent); font-weight: 700; }
+.custom-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.custom-form input[type="color"] { width: 40px; height: 34px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.custom-form input[type="text"] { flex: 1 1 140px; }
+
+/* mix */
+.n5 { background: var(--n5); border-radius: 12px; padding: 22px; display: grid; place-items: center; }
+.dab { width: min(190px, 60vw); aspect-ratio: 1.15; max-width: 100%; border-radius: 58% 42% 55% 45% / 52% 58% 42% 48%; position: relative; box-shadow: 0 6px 16px rgba(0,0,0,.25); transition: background-color .25s ease; }
+.dab::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: radial-gradient(ellipse at 32% 28%, rgba(255,255,255,.28), rgba(255,255,255,0) 42%), radial-gradient(ellipse at 70% 80%, rgba(0,0,0,.16), rgba(0,0,0,0) 50%); }
+.dab.none { background: repeating-linear-gradient(45deg, #888 0 8px, #8e8e8e 8px 16px); box-shadow: none; }
+.recipe { font-size: 15px; font-weight: 500; text-wrap: balance; }
+.propbar { display: flex; height: 10px; border-radius: 6px; overflow: hidden; background: var(--surface-2); }
+.propbar span { display: block; height: 100%; }
+.readouts { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 8px; }
+.readout { background: var(--surface-2); border-radius: 9px; padding: 8px 10px; min-width: 0; }
+.readout b { display: block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.readout span { font-family: var(--f-mono); font-size: 13px; overflow-wrap: anywhere; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+.compare { border-top: 1px solid var(--line); padding-top: 14px; display: flex; flex-direction: column; gap: 14px; }
+.cmp-top { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 16px; align-items: center; }
+.split { background: var(--n5); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.split-disc { width: 104px; height: 104px; border-radius: 50%; overflow: hidden; display: flex; box-shadow: 0 3px 10px rgba(0,0,0,.25); }
+.split-disc div { flex: 1; }
+.split-lbl { display: flex; width: 104px; justify-content: space-between; font-size: 11px; color: #f2f2f2; letter-spacing: .06em; text-transform: uppercase; font-weight: 600; }
+.score { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.score-num { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.score-num .big { font-family: var(--f-display); font-size: 40px; line-height: 1; font-variant-numeric: tabular-nums; }
+.verdict { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; border: 1px solid currentColor; }
+.v-good { color: var(--good); } .v-warn { color: var(--warn); } .v-bad { color: var(--bad); }
+.meter { position: relative; height: 26px; }
+.meter-track { position: absolute; left: 0; right: 0; top: 4px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--good) 0 26%, var(--warn) 26% 58%, var(--bad) 58% 100%); opacity: .75; }
+.meter-pin { position: absolute; top: 0; width: 4px; height: 16px; margin-left: -2px; border-radius: 2px; background: var(--ink); transition: left .25s ease; }
+.meter-tick { position: absolute; top: 15px; font-size: 10px; color: var(--muted); transform: translateX(-50%); font-family: var(--f-mono); }
+.advice { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.advice li { display: grid; grid-template-columns: 74px minmax(0,1fr); gap: 10px; font-size: 14px; }
+.advice li b { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding-top: 2px; }
+.next { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.next p { margin: 0; min-width: 0; flex: 1 1 200px; }
+.values { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.vchip { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.vchip i { width: 28px; height: 28px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.2); }
+.solutions { display: flex; flex-direction: column; gap: 6px; }
+.sol { display: grid; grid-template-columns: 46px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 6px; border: 1px solid var(--line); border-radius: 10px; }
+.sol .mini { width: 46px; height: 30px; border-radius: 6px; overflow: hidden; display: flex; }
+.sol .mini div { flex: 1; }
+.sol .txt { font-size: 13px; min-width: 0; }
+
+/* photo */
+.stage { position: relative; border-radius: 10px; overflow: hidden; background: var(--n5); touch-action: none; cursor: crosshair; }
+.stage canvas { display: block; width: 100%; height: auto; }
+.stage.drag::after { content: "Drop the photo to load it"; position: absolute; inset: 0; display: grid; place-items: center; background: rgba(20,30,80,.55); color: #fff; font-weight: 600; font-size: 16px; }
+.marker { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1.5px rgba(0,0,0,.7), inset 0 0 0 1.5px rgba(0,0,0,.7); pointer-events: none; }
+.target-row { display: grid; grid-template-columns: 54px minmax(0,1fr); gap: 12px; align-items: center; }
+.target-sw { width: 54px; height: 54px; border-radius: 10px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.2); }
+.target-row .row input[type="text"] { width: 110px; font-family: var(--f-mono); }
+
+/* save + painting colour chart */
+.save-form { display: flex; flex-wrap: wrap; gap: 8px; }
+.save-form input { flex: 1 1 200px; }
+.status { margin: 0; font-size: 13px; color: var(--muted); min-height: 1.2em; }
+.status.err { color: var(--bad); }
+.chart-pick { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.chart-pick select { font-family: var(--f-display); font-size: 18px; padding: 4px 8px; max-width: 100%; }
+.inline-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.inline-form input { flex: 1 1 220px; }
+.color-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.card { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.card .sw { height: 70px; display: flex; }
+.card .sw div { flex: 1; display: flex; align-items: flex-end; padding: 5px 7px; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.92); }
+.card .sw div.lt { color: rgba(0,0,0,.6); }
+.card-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.card-name { font-weight: 600; font-size: 15px; overflow-wrap: anywhere; display: flex; gap: 8px; align-items: baseline; }
+.card-name .num { color: var(--muted); font-family: var(--f-mono); font-size: 12px; font-weight: 400; }
+.card-meta { font-family: var(--f-mono); font-size: 12px; color: var(--muted); }
+.card ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13px; }
+.card li { display: grid; grid-template-columns: 14px 2.2em minmax(0,1fr); gap: 6px; align-items: center; }
+.card li i { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.2); }
+.card li b { font-family: var(--f-mono); font-weight: 500; text-align: right; }
+.card .row { margin-top: auto; padding-top: 4px; }
+.card .row button { font-size: 12px; padding: 5px 9px; }
+.card .rename input { width: 100%; }
+button.danger { color: var(--bad); }
+textarea.copybox { width: 100%; min-height: 160px; font-family: var(--f-mono); font-size: 12px; background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+footer { margin-top: 22px; color: var(--muted); font-size: 12.5px; max-width: 80ch; }
+footer a { color: var(--accent); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+@media (max-width: 460px) { .cmp-top { grid-template-columns: 1fr; justify-items: start; } .readouts { grid-template-columns: 1fr 1fr; } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Paint Mixing Bench</h1>
+    <p>Pick paints from your palette, add them in parts, and see the colour they make. Then pick a colour from a photo to check how close your mix is.</p>
+  </header>
+
+  <main class="bench">
+    <!-- PALETTE -->
+    <section class="panel palette" aria-labelledby="pal-h">
+      <div class="panel-head">
+        <h2 id="pal-h">Palette</h2>
+        <div class="row">
+          <button class="ghost" id="clearParts" type="button">Clear parts</button>
+          <button id="toggleBuilder" type="button" aria-expanded="false" aria-controls="builder">Choose paints</button>
+        </div>
+      </div>
+      <p class="small muted" style="margin:0">Use + and − to add parts of each paint. 2 parts of one and 1 part of another means twice as much of the first.</p>
+      <div class="paint-list" id="paintList"></div>
+
+      <div class="builder" id="builder" hidden>
+        <div class="family">
+          <h3>Start from a preset</h3>
+          <div class="presets" id="presets"></div>
+        </div>
+        <div id="catalog" style="display:flex;flex-direction:column;gap:12px"></div>
+        <div class="family">
+          <h3>Add your own paint</h3>
+          <form class="custom-form" id="customForm">
+            <input type="color" id="customColor" value="#6a7d3a" aria-label="Paint colour">
+            <input type="text" id="customName" placeholder="Name, e.g. Olive Green" aria-label="Paint name" maxlength="40">
+            <button type="submit">Add paint</button>
+          </form>
+          <p class="small muted" style="margin:0">Tip: to match a paint you own, paint a thick swatch, photograph it in daylight, pick its colour in the photo, and use that hex value here.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- MIX -->
+    <section class="panel mix" aria-labelledby="mix-h">
+      <div class="panel-head">
+        <h2 id="mix-h">Your mix</h2>
+      </div>
+      <div class="n5"><div class="dab" id="dab" role="img" aria-label="Mixed colour"></div></div>
+      <div class="recipe" id="recipe"></div>
+      <div class="propbar" id="propbar" aria-hidden="true"></div>
+      <div class="readouts">
+        <div class="readout"><b>Hex</b><span id="rHex">—</span></div>
+        <div class="readout"><b>RGB</b><span id="rRgb">—</span></div>
+        <div class="readout"><b>Value L*</b><span id="rL">—</span></div>
+      </div>
+      <form class="save-form" id="saveForm">
+        <label class="sr" for="colorName">Colour name</label>
+        <input type="text" id="colorName" placeholder="Name this colour, e.g. Sky near horizon" maxlength="60">
+        <button class="primary" type="submit" id="saveBtn">Save to painting</button>
+      </form>
+      <p class="status" id="saveStatus" aria-live="polite"></p>
+
+      <div class="compare" id="compare">
+        <h3>Against the photo</h3>
+        <div class="cmp-top">
+          <div class="split">
+            <div class="split-disc"><div id="cmpT"></div><div id="cmpM"></div></div>
+            <div class="split-lbl"><span>Photo</span><span>Mix</span></div>
+          </div>
+          <div class="score">
+            <div class="score-num"><span class="big" id="deNum">—</span><span class="verdict" id="verdict">—</span></div>
+            <div class="small muted">ΔE 2000 colour difference. Under 2 is hard to tell apart.</div>
+            <div class="meter" aria-hidden="true">
+              <div class="meter-track"></div>
+              <div class="meter-pin" id="pin"></div>
+              <div id="ticks"></div>
+            </div>
+          </div>
+        </div>
+        <ul class="advice" id="advice"></ul>
+        <div class="next" id="next" hidden>
+          <p id="nextText"></p>
+          <button class="primary" id="nextApply" type="button">Add it</button>
+        </div>
+        <div class="values">
+          <span class="small muted">Value check (greyscale):</span>
+          <span class="vchip"><i id="vT"></i><span>Photo <span class="mono" id="vTn"></span></span></span>
+          <span class="vchip"><i id="vM"></i><span>Mix <span class="mono" id="vMn"></span></span></span>
+        </div>
+        <div class="row">
+          <button class="primary" id="solve" type="button">Find a recipe from my palette</button>
+          <span class="small muted" id="solveStatus"></span>
+        </div>
+        <div class="solutions" id="solutions"></div>
+      </div>
+    </section>
+
+    <!-- PHOTO -->
+    <section class="panel photo" aria-labelledby="ph-h">
+      <div class="panel-head">
+        <h2 id="ph-h">Reference photo</h2>
+        <div class="row">
+          <label class="small muted" for="sampleSize">Sample</label>
+          <select id="sampleSize">
+            <option value="0">1 pixel</option>
+            <option value="2" selected>5 × 5 average</option>
+            <option value="5">11 × 11 average</option>
+            <option value="10">21 × 21 average</option>
+          </select>
+          <label class="btn" for="file">Upload photo</label>
+          <input type="file" id="file" accept="image/*" class="sr">
+        </div>
+      </div>
+      <div class="stage" id="stage">
+        <canvas id="photoCanvas" aria-label="Reference photo. Click or drag to pick a colour."></canvas>
+        <div class="marker" id="marker"></div>
+      </div>
+      <p class="small muted" style="margin:0" id="photoCaption">Sample scene shown. Upload, drop or paste your own photo, then click or drag on it to pick a colour.</p>
+      <div class="target-row">
+        <div class="target-sw" id="targetSw"></div>
+        <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+          <div><b>Target colour</b> <span class="mono small" id="targetInfo"></span></div>
+          <form class="row" id="hexForm">
+            <label class="small muted" for="hexIn">or type a hex</label>
+            <input type="text" id="hexIn" placeholder="#7aa4d0" maxlength="7">
+            <button type="submit">Use</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- PAINTING COLOUR CHART -->
+    <section class="panel chart" aria-labelledby="chart-h">
+      <div class="panel-head">
+        <div class="chart-pick">
+          <h2 id="chart-h">Colour chart for</h2>
+          <label class="sr" for="paintingSel">Painting</label>
+          <select id="paintingSel"></select>
+        </div>
+        <div class="row">
+          <button type="button" id="newPainting">New painting</button>
+          <button type="button" class="ghost" id="renamePainting">Rename</button>
+          <button type="button" class="ghost danger" id="deletePainting">Delete painting</button>
+          <button type="button" id="copyList">Copy list</button>
+          <button type="button" id="downloadList" hidden>Download as text</button>
+        </div>
+      </div>
+      <form class="inline-form" id="paintingForm" hidden>
+        <label class="small muted" for="paintingName" id="paintingFormLbl">Painting name</label>
+        <input type="text" id="paintingName" maxlength="60" placeholder="e.g. Barn at dusk">
+        <button class="primary" type="submit">Save</button>
+        <button class="ghost" type="button" id="paintingCancel">Cancel</button>
+      </form>
+      <p class="status" id="chartStatus" aria-live="polite">Loading your paintings…</p>
+      <div class="row" id="importRow" hidden>
+        <span class="small muted" id="importText"></span>
+        <button type="button" id="importLocal">Move them to my account</button>
+      </div>
+      <textarea class="copybox" id="copyBox" hidden readonly aria-label="Colour list as text"></textarea>
+      <div class="color-list" id="colorList"></div>
+    </section>
+  </main>
+
+  <footer>
+    Mixing is simulated with <a href="https://scrtwpns.com/mixbox" target="_blank" rel="noopener">Mixbox</a> by Secret Weapons (CC BY-NC 4.0), which models how real pigments mix: blue and yellow make green, not grey. Paint swatches are approximate masstones. Real tubes vary by brand, and photos shift with lighting and white balance, so treat results as a starting point at the easel.
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- paint catalog (approximate masstones, sRGB) ----------
+  const CATALOG = [
+    { fam: "Whites", items: [
+      ["titanium-white", "Titanium White", [255,255,255]],
+      ["zinc-white", "Zinc White", [248,249,246]],
+      ["unbleached-titanium", "Unbleached Titanium", [233,222,196]] ]},
+    { fam: "Yellows", items: [
+      ["lemon-yellow", "Lemon Yellow", [250,240,40]],
+      ["cad-yellow-light", "Cadmium Yellow Light", [254,236,0]],
+      ["hansa-yellow", "Hansa Yellow", [252,211,0]],
+      ["cad-yellow-medium", "Cadmium Yellow Medium", [254,200,0]],
+      ["naples-yellow", "Naples Yellow", [248,214,138]],
+      ["indian-yellow", "Indian Yellow", [228,140,12]],
+      ["yellow-ochre", "Yellow Ochre", [201,148,40]] ]},
+    { fam: "Oranges", items: [
+      ["cad-orange", "Cadmium Orange", [255,105,0]],
+      ["pyrrole-orange", "Pyrrole Orange", [248,82,12]] ]},
+    { fam: "Reds & pinks", items: [
+      ["cad-red-light", "Cadmium Red Light", [255,62,10]],
+      ["cad-red-medium", "Cadmium Red Medium", [255,39,2]],
+      ["pyrrole-red", "Pyrrole Red", [222,30,22]],
+      ["naphthol-crimson", "Naphthol Crimson", [188,22,42]],
+      ["alizarin-crimson", "Alizarin Crimson", [140,12,32]],
+      ["permanent-rose", "Permanent Rose", [214,40,98]],
+      ["quin-rose", "Quinacridone Rose", [196,30,88]],
+      ["quin-magenta", "Quinacridone Magenta", [128,2,46]] ]},
+    { fam: "Violets", items: [
+      ["cobalt-violet", "Cobalt Violet", [78,0,66]],
+      ["dioxazine-purple", "Dioxazine Purple", [50,10,62]] ]},
+    { fam: "Blues", items: [
+      ["ultramarine", "Ultramarine Blue", [25,0,89]],
+      ["cobalt-blue", "Cobalt Blue", [0,33,133]],
+      ["cerulean", "Cerulean Blue", [0,108,168]],
+      ["phthalo-blue", "Phthalo Blue", [13,27,68]],
+      ["prussian-blue", "Prussian Blue", [16,30,54]] ]},
+    { fam: "Greens", items: [
+      ["phthalo-green", "Phthalo Green", [0,60,50]],
+      ["viridian", "Viridian", [0,98,80]],
+      ["permanent-green", "Permanent Green", [7,109,22]],
+      ["hookers-green", "Hooker's Green", [30,80,40]],
+      ["sap-green", "Sap Green", [107,148,4]],
+      ["chromium-oxide", "Chromium Oxide Green", [96,118,62]] ]},
+    { fam: "Earths", items: [
+      ["raw-sienna", "Raw Sienna", [178,110,40]],
+      ["burnt-sienna", "Burnt Sienna", [123,72,0]],
+      ["light-red", "Light Red Oxide", [168,62,40]],
+      ["raw-umber", "Raw Umber", [80,62,40]],
+      ["burnt-umber", "Burnt Umber", [74,45,30]],
+      ["van-dyke", "Van Dyke Brown", [58,40,30]] ]},
+    { fam: "Blacks & greys", items: [
+      ["ivory-black", "Ivory Black", [28,26,25]],
+      ["mars-black", "Mars Black", [20,20,21]],
+      ["paynes-grey", "Payne's Grey", [46,55,70]] ]}
+  ];
+  const CAT = {};
+  CATALOG.forEach(g => g.items.forEach(([id, name, rgb]) => { CAT[id] = { id, name, rgb, fam: g.fam }; }));
+
+  const PRESETS = [
+    { name: "Studio palette", ids: ["titanium-white","cad-yellow-light","yellow-ochre","cad-orange","cad-red-medium","alizarin-crimson","quin-magenta","ultramarine","cobalt-blue","phthalo-blue","phthalo-green","sap-green","burnt-sienna","burnt-umber","ivory-black"] },
+    { name: "Zorn palette", ids: ["titanium-white","yellow-ochre","cad-red-light","ivory-black"] },
+    { name: "Primary triad", ids: ["titanium-white","hansa-yellow","quin-magenta","phthalo-blue"] },
+    { name: "Split primary", ids: ["titanium-white","lemon-yellow","cad-yellow-medium","cad-red-light","alizarin-crimson","ultramarine","phthalo-blue"] },
+    { name: "Landscape earths", ids: ["titanium-white","yellow-ochre","raw-sienna","burnt-sienna","raw-umber","ultramarine","sap-green","paynes-grey"] }
+  ];
+
+  // ---------- state ----------
+  const STORE = "paint-mixing-bench.v1";
+  let state = {
+    palette: PRESETS[0].ids.slice(),
+    custom: [],          // {id, name, rgb}
+    parts: { "titanium-white": 4, "cobalt-blue": 1, "burnt-sienna": 0 }
+  };
+  try {
+    const raw = localStorage.getItem(STORE);
+    if (raw) { const s = JSON.parse(raw); if (s && Array.isArray(s.palette)) state = Object.assign(state, s); }
+  } catch (e) {}
+  function persist() { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) {} }
+
+  let target = null; // {rgb, label}
+
+  function paintById(id) { return CAT[id] || state.custom.find(p => p.id === id); }
+  function activePaints() { return state.palette.map(paintById).filter(Boolean); }
+
+  // ---------- colour math ----------
+  const latentCache = new Map();
+  function latentOf(p) {
+    const k = p.rgb.join(",");
+    if (!latentCache.has(k)) latentCache.set(k, mixbox.rgbToLatent(p.rgb));
+    return latentCache.get(k);
+  }
+  function mixParts(entries) { // entries: [[paint, parts]]
+    let total = 0; entries.forEach(e => total += e[1]);
+    if (total <= 0) return null;
+    const z = new Array(mixbox.LATENT_SIZE).fill(0);
+    for (const [p, n] of entries) { const l = latentOf(p), w = n / total; for (let i = 0; i < z.length; i++) z[i] += w * l[i]; }
+    return mixbox.latentToRgb(z);
+  }
+  function lin(c) { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+  function toLab(rgb) {
+    const r = lin(rgb[0]), g = lin(rgb[1]), b = lin(rgb[2]);
+    let x = (0.4124564*r + 0.3575761*g + 0.1804375*b) / 0.95047;
+    let y = (0.2126729*r + 0.7151522*g + 0.0721750*b);
+    let z = (0.0193339*r + 0.1191920*g + 0.9503041*b) / 1.08883;
+    const f = t => t > 0.008856 ? Math.cbrt(t) : (7.787 * t + 16/116);
+    x = f(x); y = f(y); z = f(z);
+    return [116*y - 16, 500*(x - y), 200*(y - z)];
+  }
+  function de2000(l1, l2) {
+    const [L1,a1,b1] = l1, [L2,a2,b2] = l2, rad = Math.PI/180;
+    const C1 = Math.hypot(a1,b1), C2 = Math.hypot(a2,b2), Cb = (C1+C2)/2, Cb7 = Math.pow(Cb,7);
+    const G = 0.5 * (1 - Math.sqrt(Cb7 / (Cb7 + 6103515625)));
+    const a1p = (1+G)*a1, a2p = (1+G)*a2;
+    const C1p = Math.hypot(a1p,b1), C2p = Math.hypot(a2p,b2);
+    const hue = (b,a) => { if (a === 0 && b === 0) return 0; const h = Math.atan2(b,a)/rad; return h < 0 ? h + 360 : h; };
+    const h1p = hue(b1,a1p), h2p = hue(b2,a2p);
+    const dLp = L2 - L1, dCp = C2p - C1p;
+    let dhp = 0;
+    if (C1p*C2p !== 0) { dhp = h2p - h1p; if (dhp > 180) dhp -= 360; else if (dhp < -180) dhp += 360; }
+    const dHp = 2*Math.sqrt(C1p*C2p)*Math.sin(dhp*rad/2);
+    const Lbp = (L1+L2)/2, Cbp = (C1p+C2p)/2;
+    let hbp = h1p + h2p;
+    if (C1p*C2p !== 0) hbp = Math.abs(h1p-h2p) > 180 ? (hbp < 360 ? (hbp+360)/2 : (hbp-360)/2) : hbp/2;
+    const T = 1 - 0.17*Math.cos((hbp-30)*rad) + 0.24*Math.cos(2*hbp*rad) + 0.32*Math.cos((3*hbp+6)*rad) - 0.20*Math.cos((4*hbp-63)*rad);
+    const dTh = 30*Math.exp(-Math.pow((hbp-275)/25, 2));
+    const Cbp7 = Math.pow(Cbp,7), Rc = 2*Math.sqrt(Cbp7/(Cbp7+6103515625));
+    const Sl = 1 + 0.015*Math.pow(Lbp-50,2)/Math.sqrt(20+Math.pow(Lbp-50,2));
+    const Sc = 1 + 0.045*Cbp, Sh = 1 + 0.015*Cbp*T, Rt = -Math.sin(2*dTh*rad)*Rc;
+    return Math.sqrt(Math.pow(dLp/Sl,2) + Math.pow(dCp/Sc,2) + Math.pow(dHp/Sh,2) + Rt*(dCp/Sc)*(dHp/Sh));
+  }
+  const hex = rgb => "#" + rgb.map(v => Math.round(v).toString(16).padStart(2,"0")).join("").toUpperCase();
+  const css = rgb => `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+  function greyOf(L) { // sRGB grey with the same L*
+    const y = L > 8 ? Math.pow((L+16)/116, 3) : L/903.3;
+    const v = y <= 0.0031308 ? 12.92*y : 1.055*Math.pow(y, 1/2.4) - 0.055;
+    const c = Math.round(Math.max(0, Math.min(1, v))*255); return [c,c,c];
+  }
+  function hueName(h) {
+    const names = [[20,"magenta-red"],[50,"red"],[72,"orange"],[100,"yellow"],[135,"yellow-green"],[195,"green"],[235,"blue-green"],[290,"blue"],[330,"violet"],[360,"magenta"]];
+    for (const [lim, n] of names) if (h < lim) return n;
+    return "magenta";
+  }
+  function verdictFor(de) {
+    if (de < 1) return ["Indistinguishable", "v-good"];
+    if (de < 2) return ["Very close", "v-good"];
+    if (de < 5) return ["Close", "v-warn"];
+    if (de < 10) return ["Noticeably different", "v-bad"];
+    return ["Far off", "v-bad"];
+  }
+  const meterPos = de => Math.min(1, Math.sqrt(Math.max(0, de) / 30));
+
+  // ---------- current mix ----------
+  function currentEntries() {
+    return activePaints().map(p => [p, state.parts[p.id] || 0]).filter(e => e[1] > 0);
+  }
+  function recipeText(entries) {
+    if (!entries.length) return "";
+    return entries.slice().sort((a,b) => b[1]-a[1]).map(([p,n]) => `${n} ${p.name}`).join(" · ");
+  }
+
+  // ---------- palette UI ----------
+  const $ = id => document.getElementById(id);
+  function renderPalette() {
+    const list = $("paintList"); list.innerHTML = "";
+    const paints = activePaints();
+    if (!paints.length) {
+      list.innerHTML = '<div class="empty">Your palette is empty. Choose paints below to start mixing.</div>';
+      $("builder").hidden = false; $("toggleBuilder").setAttribute("aria-expanded", "true");
+      return;
+    }
+    paints.forEach(p => {
+      const n = state.parts[p.id] || 0;
+      const row = document.createElement("div");
+      row.className = "paint" + (n > 0 ? " active" : "");
+      row.dataset.id = p.id;
+      row.innerHTML = `<span class="tube" style="background:${css(p.rgb)}"></span>
+        <span class="paint-name">${esc(p.name)}<small>${p.fam ? esc(p.fam.replace(/s$|s &.*$/, "")) : "Custom"} · <span class="mono">${hex(p.rgb)}</span></small></span>
+        <span class="stepper" role="group" aria-label="Parts of ${esc(p.name)}">
+          <button type="button" data-d="-1" aria-label="One less part of ${esc(p.name)}">−</button>
+          <output aria-live="polite">${n}</output>
+          <button type="button" data-d="1" aria-label="One more part of ${esc(p.name)}">+</button>
+        </span>`;
+      list.appendChild(row);
+    });
+  }
+  function updateCounts() {
+    document.querySelectorAll("#paintList .paint").forEach(row => {
+      const n = state.parts[row.dataset.id] || 0;
+      row.querySelector("output").textContent = n;
+      row.classList.toggle("active", n > 0);
+    });
+  }
+  $("paintList").addEventListener("click", e => {
+    const b = e.target.closest("button[data-d]"); if (!b) return;
+    const id = b.closest(".paint").dataset.id;
+    const n = Math.max(0, Math.min(99, (state.parts[id] || 0) + Number(b.dataset.d)));
+    state.parts[id] = n; persist(); updateCounts(); renderMix();
+  });
+  $("clearParts").addEventListener("click", () => { state.parts = {}; persist(); updateCounts(); renderMix(); });
+  $("toggleBuilder").addEventListener("click", () => {
+    const b = $("builder"); b.hidden = !b.hidden;
+    $("toggleBuilder").setAttribute("aria-expanded", String(!b.hidden));
+    $("toggleBuilder").textContent = b.hidden ? "Choose paints" : "Done choosing";
+  });
+
+  function renderBuilder() {
+    const pr = $("presets"); pr.innerHTML = "";
+    PRESETS.forEach((p, i) => {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = `${p.name} (${p.ids.length})`;
+      b.addEventListener("click", () => { state.palette = p.ids.slice().concat(state.palette.filter(id => id.startsWith("custom-"))); persist(); renderAll(); });
+      pr.appendChild(b);
+    });
+    const cat = $("catalog"); cat.innerHTML = "";
+    const groups = CATALOG.map(g => ({ fam: g.fam, items: g.items.map(i => CAT[i[0]]) }));
+    if (state.custom.length) groups.push({ fam: "Your paints", items: state.custom, custom: true });
+    groups.forEach(g => {
+      const wrap = document.createElement("div"); wrap.className = "family";
+      wrap.innerHTML = `<h3>${esc(g.fam)}</h3>`;
+      const chips = document.createElement("div"); chips.className = "chips";
+      g.items.forEach(p => {
+        const on = state.palette.includes(p.id);
+        const b = document.createElement("button"); b.type = "button"; b.className = "chip";
+        b.setAttribute("aria-pressed", String(on)); b.dataset.id = p.id;
+        b.innerHTML = `<span class="dot" style="background:${css(p.rgb)}"></span>${esc(p.name)}`;
+        chips.appendChild(b);
+        if (g.custom) {
+          const x = document.createElement("button"); x.type = "button"; x.className = "ghost small"; x.dataset.del = p.id;
+          x.textContent = "Delete"; x.setAttribute("aria-label", `Delete ${p.name}`); chips.appendChild(x);
+        }
+      });
+      wrap.appendChild(chips); cat.appendChild(wrap);
+    });
+  }
+  $("catalog").addEventListener("click", e => {
+    const del = e.target.closest("button[data-del]");
+    if (del) {
+      const id = del.dataset.del;
+      state.custom = state.custom.filter(p => p.id !== id); state.palette = state.palette.filter(x => x !== id);
+      delete state.parts[id]; persist(); renderAll(); return;
+    }
+    const c = e.target.closest("button.chip"); if (!c) return;
+    const id = c.dataset.id;
+    if (state.palette.includes(id)) { state.palette = state.palette.filter(x => x !== id); delete state.parts[id]; }
+    else state.palette.push(id);
+    persist(); renderAll();
+  });
+  $("customForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const name = $("customName").value.trim() || "Custom paint";
+    const v = $("customColor").value;
+    const rgb = [1,3,5].map(i => parseInt(v.substr(i,2),16));
+    const id = "custom-" + Date.now().toString(36);
+    state.custom.push({ id, name, rgb }); state.palette.push(id);
+    $("customName").value = ""; persist(); renderAll();
+  });
+
+  // ---------- mix + compare UI ----------
+  let lastMix = null, suggestion = null;
+  function renderMix() {
+    const entries = currentEntries();
+    const rgb = mixParts(entries); lastMix = rgb;
+    const dab = $("dab");
+    if (rgb) { dab.classList.remove("none"); dab.style.backgroundColor = css(rgb); dab.setAttribute("aria-label", "Mixed colour " + hex(rgb)); }
+    else { dab.classList.add("none"); dab.style.backgroundColor = ""; dab.setAttribute("aria-label", "No paint added yet"); }
+    $("recipe").textContent = entries.length ? recipeText(entries) : "Add parts of a paint to start a mix.";
+    const total = entries.reduce((s,e) => s + e[1], 0);
+    $("propbar").innerHTML = entries.map(([p,n]) => `<span style="width:${100*n/total}%;background:${css(p.rgb)}" title="${esc(p.name)}"></span>`).join("");
+    $("rHex").textContent = rgb ? hex(rgb) : "—";
+    $("rRgb").textContent = rgb ? rgb.join(", ") : "—";
+    $("rL").textContent = rgb ? toLab(rgb)[0].toFixed(1) : "—";
+    $("saveBtn").disabled = !rgb;
+    renderCompare();
+  }
+
+  function renderCompare() {
+    const t = target && target.rgb, m = lastMix;
+    $("cmpT").style.background = t ? css(t) : "transparent";
+    $("cmpM").style.background = m ? css(m) : "transparent";
+    const adv = $("advice"); adv.innerHTML = ""; $("next").hidden = true; suggestion = null;
+    if (!t || !m) {
+      $("deNum").textContent = "—"; $("verdict").textContent = t ? "Add paint to compare" : "Pick a colour in the photo";
+      $("verdict").className = "verdict muted"; $("pin").style.left = "0%";
+      ["vT","vM"].forEach(id => $(id).style.background = "transparent"); $("vTn").textContent = $("vMn").textContent = "";
+      if (t) { $("vT").style.background = css(greyOf(toLab(t)[0])); $("vTn").textContent = toLab(t)[0].toFixed(0); }
+      return;
+    }
+    const lt = toLab(t), lm = toLab(m), de = de2000(lt, lm);
+    $("deNum").textContent = de.toFixed(1);
+    const [vt, vc] = verdictFor(de); $("verdict").textContent = vt; $("verdict").className = "verdict " + vc;
+    $("pin").style.left = (meterPos(de)*100) + "%";
+    $("vT").style.background = css(greyOf(lt[0])); $("vTn").textContent = lt[0].toFixed(0);
+    $("vM").style.background = css(greyOf(lm[0])); $("vMn").textContent = lm[0].toFixed(0);
+
+    const items = [];
+    const dL = lt[0] - lm[0];
+    if (Math.abs(dL) < 2) items.push(["Value", "Lightness matches."]);
+    else if (dL > 0) items.push(["Value", `Your mix is darker than the photo by ${dL.toFixed(0)} L*. Lighten it with white, or a light yellow if the colour is warm.`]);
+    else items.push(["Value", `Your mix is lighter than the photo by ${(-dL).toFixed(0)} L*. Darken it with a touch of a dark paint such as umber, black or the colour's complement.`]);
+    const Ct = Math.hypot(lt[1], lt[2]), Cm = Math.hypot(lm[1], lm[2]), dC = Ct - Cm;
+    if (Math.abs(dC) < 3) items.push(["Intensity", "Saturation matches."]);
+    else if (dC > 0) items.push(["Intensity", "The photo colour is more vivid. Use stronger, purer pigments and less white or black."]);
+    else items.push(["Intensity", "The photo colour is duller. Knock the mix back with a little of its complement or a grey."]);
+    if (Ct > 6 && Cm > 6) {
+      const ht = (Math.atan2(lt[2], lt[1])*180/Math.PI + 360) % 360, hm = (Math.atan2(lm[2], lm[1])*180/Math.PI + 360) % 360;
+      let dh = ht - hm; if (dh > 180) dh -= 360; if (dh < -180) dh += 360;
+      if (Math.abs(dh) < 4) items.push(["Hue", "Hue matches."]);
+      else items.push(["Hue", `Nudge the hue toward ${hueName((hm + Math.sign(dh)*45 + 360) % 360)}. The photo colour reads as ${hueName(ht)}.`]);
+    } else if (Ct > 6 && Cm <= 6) items.push(["Hue", `The mix is nearly neutral. The photo colour is a ${hueName((Math.atan2(lt[2], lt[1])*180/Math.PI + 360) % 360)}.`]);
+    adv.innerHTML = items.map(([k,v]) => `<li><b>${k}</b><span>${v}</span></li>`).join("");
+
+    if (de >= 1) {
+      // try adding or removing one part of each paint
+      let best = null;
+      for (const p of activePaints()) {
+        for (const d of [1, -1]) {
+          const n = (state.parts[p.id] || 0) + d; if (n < 0) continue;
+          const ent = activePaints().map(q => [q, q.id === p.id ? n : (state.parts[q.id] || 0)]).filter(e => e[1] > 0);
+          const rgb = mixParts(ent); if (!rgb) continue;
+          const d2 = de2000(lt, toLab(rgb));
+          if (d2 < de - 0.2 && (!best || d2 < best.de)) best = { p, d, de: d2 };
+        }
+      }
+      if (best) {
+        suggestion = best;
+        $("nextText").innerHTML = `<b>Next step:</b> ${best.d > 0 ? "add" : "take out"} 1 part of ${esc(best.p.name)}. That brings ΔE from ${de.toFixed(1)} to <b>${best.de.toFixed(1)}</b>.`;
+        $("nextApply").textContent = best.d > 0 ? "Add it" : "Take it out";
+        $("next").hidden = false;
+      }
+    }
+  }
+  $("nextApply").addEventListener("click", () => {
+    if (!suggestion) return;
+    state.parts[suggestion.p.id] = (state.parts[suggestion.p.id] || 0) + suggestion.d;
+    persist(); updateCounts(); renderMix();
+  });
+
+  function renderTicks() {
+    $("ticks").innerHTML = [0,1,2,5,10,20,30].map(v => `<span class="meter-tick" style="left:${meterPos(v)*100}%">${v}</span>`).join("");
+  }
+
+  // ---------- solver ----------
+  let solving = false;
+  $("solve").addEventListener("click", async () => {
+    if (solving || !target) return;
+    const paints = activePaints();
+    if (!paints.length) { $("solveStatus").textContent = "Add paints to your palette first."; return; }
+    solving = true; $("solve").disabled = true; $("solveStatus").textContent = "Searching mixes…"; $("solutions").innerHTML = "";
+    await new Promise(r => setTimeout(r, 20));
+    const lt = toLab(target.rgb), L = paints.map(latentOf), K = mixbox.LATENT_SIZE;
+    const best = new Map(); // key: paint set → best result
+    const z = new Array(K);
+    const consider = (idx, parts) => {
+      let tot = 0; for (const n of parts) tot += n;
+      for (let i = 0; i < K; i++) { let s = 0; for (let j = 0; j < idx.length; j++) s += parts[j] * L[idx[j]][i]; z[i] = s / tot; }
+      const rgb = mixbox.latentToRgb(z), de = de2000(lt, toLab(rgb));
+      const score = de + 0.25 * (idx.length - 1) + 0.01 * tot; // prefer simpler recipes when close
+      const key = idx.join(",");
+      const cur = best.get(key);
+      if (!cur || score < cur.score) best.set(key, { idx: idx.slice(), parts: parts.slice(), rgb, de, score });
+    };
+    const n = paints.length;
+    for (let a = 0; a < n; a++) consider([a], [1]);
+    for (let a = 0; a < n; a++) for (let b = a+1; b < n; b++) for (let i = 1; i <= 12; i++) for (let j = 1; j <= 12; j++) consider([a,b],[i,j]);
+    let count = 0;
+    for (let a = 0; a < n; a++) for (let b = a+1; b < n; b++) {
+      for (let c = b+1; c < n; c++) {
+        for (let i = 1; i <= 8; i++) for (let j = 1; j <= 8; j++) for (let k = 1; k <= 8; k++) consider([a,b,c],[i,j,k]);
+        if (++count % 40 === 0) { $("solveStatus").textContent = `Searching mixes… ${Math.round(100*a/n)}%`; await new Promise(r => setTimeout(r, 0)); }
+      }
+    }
+    const top = [...best.values()].sort((x,y) => x.score - y.score).slice(0, 4);
+    $("solutions").innerHTML = "";
+    top.forEach(s => {
+      const g = s.parts.reduce((x,y) => gcd(x,y));
+      const ent = s.idx.map((i,j) => [paints[i], s.parts[j]/g]);
+      const div = document.createElement("div"); div.className = "sol";
+      const [vt, vc] = verdictFor(s.de);
+      div.innerHTML = `<div class="mini"><div style="background:${css(target.rgb)}"></div><div style="background:${css(s.rgb)}"></div></div>
+        <div class="txt">${esc(recipeText(ent))}<br><span class="mono">ΔE ${s.de.toFixed(1)}</span> <span class="${vc}">${vt}</span></div>
+        <button type="button">Use</button>`;
+      div.querySelector("button").addEventListener("click", () => {
+        state.parts = {}; ent.forEach(([p,n]) => state.parts[p.id] = n); persist(); updateCounts(); renderMix();
+      });
+      $("solutions").appendChild(div);
+    });
+    $("solveStatus").textContent = top.length ? `Best recipes using up to 3 of your ${n} paints:` : "No mixes found.";
+    solving = false; $("solve").disabled = false;
+  });
+  function gcd(a,b) { return b ? gcd(b, a % b) : a; }
+
+  // ---------- paintings: storage ----------
+  // Each painting is one document {type, name, created, updated, colors[]} in the viewer's private
+  // db subtree. Without db (signed out, saved copy, preview) it falls back to this browser's storage.
+  const Paintings = (() => {
+    const LKEY = "paint-mixing-bench.paintings.v1";
+    let mode = "loading", coll = null, list = [], onChange = () => {}, onError = () => {};
+    const queues = new Map();
+    const readLocal = () => { try { const v = JSON.parse(localStorage.getItem(LKEY)); return Array.isArray(v) ? v : []; } catch (e) { return []; } };
+    const writeLocal = () => { try { localStorage.setItem(LKEY, JSON.stringify(list)); } catch (e) { onError("This browser blocked saving. Your changes last only until you close the page."); } };
+    const sortList = () => list.sort((a, b) => (a.created || 0) - (b.created || 0));
+    const body = p => JSON.parse(JSON.stringify({ type: "painting", name: p.name, created: p.created, updated: p.updated, colors: p.colors }));
+    function dbError(e) {
+      const code = e && e.code;
+      if (code === "quota_exceeded") onError("Your storage for this page is full. Delete a painting you no longer need, then try again.");
+      else if (code === "invalid_argument") onError("This account can't save here. Changes last only until you close the page.");
+      else onError("Couldn't save just now. Check your connection, then make the change again.");
+    }
+    async function init(handlers) {
+      onChange = handlers.onChange; onError = handlers.onError;
+      let db = null, uid = null;
+      if (window.claude && typeof window.claude.use === "function") {
+        try {
+          const [d, u] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+          db = d; uid = u ? await u.id() : null;
+        } catch (e) {}
+      }
+      if (db && uid) {
+        mode = "account";
+        coll = db.collection("data/users/" + uid);
+        coll.onSnapshot(snap => {
+          list = snap.docs.map(d => Object.assign({ id: d.id }, JSON.parse(JSON.stringify(d.data() || {})))).filter(p => p.type === "painting");
+          sortList(); onChange();
+        }, () => { onError("Lost the connection to your saved paintings. Reload the page to reconnect."); });
+      } else {
+        mode = "local"; list = readLocal(); sortList(); onChange();
+      }
+    }
+    function save(p) {
+      p.updated = Date.now();
+      const i = list.findIndex(x => x.id === p.id);
+      if (i < 0) list.push(p); else list[i] = p;
+      sortList(); onChange();
+      if (mode === "local") { writeLocal(); return; }
+      const data = body(p);
+      const prev = queues.get(p.id) || Promise.resolve();
+      queues.set(p.id, prev.then(() => coll.doc(p.id).set(data)).catch(dbError));
+    }
+    function remove(id) {
+      list = list.filter(x => x.id !== id); onChange();
+      if (mode === "local") { writeLocal(); return; }
+      const prev = queues.get(id) || Promise.resolve();
+      queues.set(id, prev.then(() => coll.doc(id).delete()).catch(dbError));
+    }
+    function localLeftovers() { return mode === "account" ? readLocal() : []; }
+    function importLocal() {
+      const items = readLocal();
+      items.forEach(p => { if (!list.some(x => x.id === p.id)) save(p); });
+      try { localStorage.removeItem(LKEY); } catch (e) {}
+    }
+    return { init, save, remove, importLocal, localLeftovers, get list() { return list; }, get mode() { return mode; } };
+  })();
+
+  // ---------- paintings: UI ----------
+  const CUR_KEY = "paint-mixing-bench.current";
+  let currentId = null;
+  try { currentId = localStorage.getItem(CUR_KEY); } catch (e) {}
+  const newId = pfx => pfx + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  function currentPainting() {
+    const l = Paintings.list;
+    return l.find(p => p.id === currentId) || l[l.length - 1] || null;
+  }
+  function setCurrent(id) { currentId = id; try { localStorage.setItem(CUR_KEY, id); } catch (e) {} renderChart(); }
+  function status(id, msg, isErr) { const el = $(id); el.textContent = msg; el.classList.toggle("err", !!isErr); }
+
+  function snapshotMix() {
+    const entries = currentEntries(); if (!entries.length) return null;
+    const rgb = mixParts(entries);
+    return {
+      recipe: entries.map(([p, n]) => ({ id: p.id, name: p.name, rgb: p.rgb.slice(), parts: n })).sort((a, b) => b.parts - a.parts),
+      rgb, target: target ? target.rgb.slice() : null,
+      de: target ? Math.round(de2000(toLab(target.rgb), toLab(rgb)) * 10) / 10 : null
+    };
+  }
+
+  $("saveForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const mix = snapshotMix(); if (!mix) { status("saveStatus", "Add some paint to the mix first.", true); return; }
+    let p = currentPainting();
+    if (!p) { p = { id: newId("p-"), name: "My painting", created: Date.now(), colors: [] }; currentId = p.id; try { localStorage.setItem(CUR_KEY, p.id); } catch (e2) {} }
+    else p = JSON.parse(JSON.stringify(p));
+    const name = $("colorName").value.trim() || `Colour ${p.colors.length + 1}`;
+    p.colors.push(Object.assign({ id: newId("c-"), name, saved: Date.now() }, mix));
+    Paintings.save(p);
+    $("colorName").value = "";
+    status("saveStatus", `Saved "${name}" to ${p.name}.`);
+  });
+
+  function renderChart() {
+    const list = Paintings.list, cur = currentPainting();
+    if (cur) currentId = cur.id;
+    const sel = $("paintingSel");
+    sel.innerHTML = list.length ? list.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("") : '<option value="">My painting (new)</option>';
+    if (cur) sel.value = cur.id;
+    ["renamePainting", "deletePainting", "copyList", "downloadList"].forEach(id => $(id).disabled = !cur);
+    if (!confirmingDelete) $("deletePainting").textContent = "Delete painting";
+    const saveTo = cur ? cur.name : "My painting";
+    $("saveBtn").textContent = `Save to ${saveTo.length > 22 ? saveTo.slice(0, 21) + "…" : saveTo}`;
+    if (Paintings.mode !== "loading") {
+      status("chartStatus", Paintings.mode === "account"
+        ? "Saved to your Claude account, so the charts are there whenever you open this page."
+        : "Saved in this browser only. Open the page signed in to Claude to keep the charts in your account.");
+    }
+    const left = Paintings.localLeftovers().filter(p => !list.some(x => x.id === p.id));
+    $("importRow").hidden = !left.length;
+    if (left.length) $("importText").textContent = `${left.length} painting${left.length > 1 ? "s" : ""} saved earlier in this browser only.`;
+
+    const el = $("colorList");
+    if (!cur || !cur.colors.length) {
+      el.innerHTML = `<div class="empty" style="grid-column:1/-1">No colours saved for ${esc(cur ? cur.name : "this painting")} yet. Mix a colour, give it a name above the comparison, and press <b>Save to painting</b>. Each colour keeps its recipe, the photo colour it was matched to, and how close it came.</div>`;
+      return;
+    }
+    el.innerHTML = cur.colors.map((c, i) => {
+      const [vt, vc] = c.de != null ? verdictFor(c.de) : ["", ""];
+      return `<article class="card" data-id="${esc(c.id)}">
+        <div class="sw">${c.target ? `<div class="${toLab(c.target)[0] > 62 ? "lt" : ""}" style="background:${css(c.target)}">Photo</div>` : ""}<div class="${toLab(c.rgb)[0] > 62 ? "lt" : ""}" style="background:${css(c.rgb)}">Mix</div></div>
+        <div class="card-body">
+          <div class="card-name"><span class="num">${String(i + 1).padStart(2, "0")}</span><span class="nm">${esc(c.name)}</span></div>
+          <div class="card-meta">${hex(c.rgb)}${c.de != null ? ` · ΔE ${c.de.toFixed(1)} <span class="${vc}">${vt}</span>` : ""}</div>
+          <ul>${c.recipe.map(r => `<li><i style="background:${css(r.rgb)}"></i><b>${r.parts}</b><span>${r.parts === 1 ? "part" : "parts"} ${esc(r.name)}</span></li>`).join("")}</ul>
+          <div class="row">
+            <button type="button" data-act="load" title="Put this recipe back on the mixing slab">Load</button>
+            <button type="button" class="ghost" data-act="update" title="Replace this recipe with the current mix">Use current mix</button>
+            <button type="button" class="ghost" data-act="rename">Rename</button>
+            <button type="button" class="ghost danger" data-act="del">Delete</button>
+          </div>
+        </div></article>`;
+    }).join("");
+  }
+
+  $("paintingSel").addEventListener("change", e => { if (e.target.value) setCurrent(e.target.value); });
+
+  let paintingFormMode = null, confirmingDelete = false;
+  function openPaintingForm(mode) {
+    paintingFormMode = mode;
+    $("paintingForm").hidden = false;
+    $("paintingFormLbl").textContent = mode === "new" ? "New painting name" : "Rename painting";
+    $("paintingName").value = mode === "rename" && currentPainting() ? currentPainting().name : "";
+    $("paintingName").focus();
+  }
+  $("newPainting").addEventListener("click", () => openPaintingForm("new"));
+  $("renamePainting").addEventListener("click", () => openPaintingForm("rename"));
+  $("paintingCancel").addEventListener("click", () => { $("paintingForm").hidden = true; });
+  $("paintingForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const name = $("paintingName").value.trim(); if (!name) { $("paintingName").focus(); return; }
+    if (paintingFormMode === "new") {
+      const p = { id: newId("p-"), name, created: Date.now(), colors: [] };
+      currentId = p.id; try { localStorage.setItem(CUR_KEY, p.id); } catch (e2) {}
+      Paintings.save(p);
+    } else {
+      const p = currentPainting(); if (p) { const q = JSON.parse(JSON.stringify(p)); q.name = name; Paintings.save(q); }
+    }
+    $("paintingForm").hidden = true;
+  });
+  $("deletePainting").addEventListener("click", () => {
+    const p = currentPainting(); if (!p) return;
+    if (!confirmingDelete) {
+      confirmingDelete = true;
+      $("deletePainting").textContent = `Confirm: delete ${p.name} and its ${p.colors.length} colours`;
+      setTimeout(() => { confirmingDelete = false; renderChart(); }, 5000);
+      return;
+    }
+    confirmingDelete = false; currentId = null; Paintings.remove(p.id);
+  });
+  $("importLocal").addEventListener("click", () => { Paintings.importLocal(); renderChart(); });
+
+  $("colorList").addEventListener("click", e => {
+    const b = e.target.closest("button[data-act]"); if (!b) return;
+    const card = b.closest(".card"), p = currentPainting(); if (!p) return;
+    const q = JSON.parse(JSON.stringify(p)), c = q.colors.find(x => x.id === card.dataset.id); if (!c) return;
+    const act = b.dataset.act;
+    if (act === "load") {
+      state.parts = {};
+      c.recipe.forEach(r => {
+        if (!paintById(r.id)) state.custom.push({ id: r.id, name: r.name, rgb: r.rgb });
+        if (!state.palette.includes(r.id)) state.palette.push(r.id);
+        state.parts[r.id] = r.parts;
+      });
+      if (c.target) { markerPos = null; placeMarker(); setTarget(c.target, `saved with "${c.name}"`, true); }
+      persist(); renderAll();
+      status("saveStatus", `Loaded "${c.name}". Change it and press Use current mix on its card to update it.`);
+      document.querySelector(".mix").scrollIntoView({ behavior: "smooth", block: "start" });
+    } else if (act === "update") {
+      const mix = snapshotMix(); if (!mix) { status("saveStatus", "Add some paint to the mix first.", true); return; }
+      Object.assign(c, mix, { saved: Date.now() }); Paintings.save(q);
+    } else if (act === "del") {
+      if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "Confirm delete"; return; }
+      q.colors = q.colors.filter(x => x.id !== c.id); Paintings.save(q);
+    } else if (act === "rename") {
+      const nm = card.querySelector(".nm");
+      nm.innerHTML = `<form class="rename"><input type="text" maxlength="60" aria-label="Colour name" value="${esc(c.name)}"></form>`;
+      const f = nm.querySelector("form"), inp = f.querySelector("input");
+      inp.focus(); inp.select();
+      const done = () => { const v = inp.value.trim(); if (v && v !== c.name) { c.name = v; Paintings.save(q); } else renderChart(); };
+      f.addEventListener("submit", ev => { ev.preventDefault(); inp.removeEventListener("blur", done); done(); });
+      inp.addEventListener("blur", done);
+      inp.addEventListener("keydown", ev => { if (ev.key === "Escape") { inp.removeEventListener("blur", done); renderChart(); } });
+    }
+  });
+
+  function chartText(p) {
+    const lines = [`${p.name}: colour mixes`, ""];
+    p.colors.forEach((c, i) => {
+      lines.push(`${i + 1}. ${c.name}   mix ${hex(c.rgb)}${c.target ? `   photo ${hex(c.target)}   ΔE ${c.de.toFixed(1)}` : ""}`);
+      c.recipe.forEach(r => lines.push(`     ${r.parts} ${r.parts === 1 ? "part " : "parts"} ${r.name}`));
+      lines.push("");
+    });
+    return lines.join("\n");
+  }
+  $("copyList").addEventListener("click", () => {
+    const p = currentPainting(); if (!p) return;
+    const text = chartText(p), box = $("copyBox");
+    const fallback = () => { box.hidden = false; box.value = text; box.focus(); box.select(); status("chartStatus", "Press Ctrl+C (or ⌘C) to copy the selected list."); };
+    try {
+      navigator.clipboard.writeText(text).then(() => { box.hidden = true; status("chartStatus", `Copied ${p.colors.length} colours from ${p.name}.`); }, fallback);
+    } catch (e) { fallback(); }
+  });
+  let downloads = null;
+  $("downloadList").addEventListener("click", async () => {
+    const p = currentPainting(); if (!p || !downloads) return;
+    try { await downloads.save({ filename: `${p.name.replace(/[\\/:*?"<>|]+/g, "-")} colour mixes.txt`, data: chartText(p) }); }
+    catch (e) { if (e && e.code !== "declined") status("chartStatus", "The download didn't start. Use Copy list instead.", true); }
+  });
+  if (window.claude && typeof window.claude.use === "function") {
+    window.claude.use("downloads").then(d => { downloads = d; $("downloadList").hidden = !d; }).catch(() => {});
+  }
+
+  // ---------- photo ----------
+  const canvas = $("photoCanvas"), ctx = canvas.getContext("2d", { willReadFrequently: true });
+  let markerPos = null;
+  function drawSampleScene() {
+    const W = 900, H = 600; canvas.width = W; canvas.height = H;
+    let g = ctx.createLinearGradient(0, 0, 0, 330); g.addColorStop(0, "#4f86c6"); g.addColorStop(1, "#d3e2ea");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    g = ctx.createRadialGradient(700, 140, 10, 700, 140, 260); g.addColorStop(0, "rgba(255,236,190,.95)"); g.addColorStop(.15, "rgba(255,226,170,.5)"); g.addColorStop(1, "rgba(255,226,170,0)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    const ridge = (base, amp, f1, f2, color) => { ctx.beginPath(); ctx.moveTo(0, H); for (let x = 0; x <= W; x += 6) ctx.lineTo(x, base + amp*Math.sin(x*f1) + amp*0.5*Math.sin(x*f2 + 1.3)); ctx.lineTo(W, H); ctx.closePath(); ctx.fillStyle = color; ctx.fill(); };
+    ridge(300, 22, 0.007, 0.019, "#8a9db3");
+    ridge(345, 26, 0.005, 0.013, "#617f8a");
+    ridge(390, 20, 0.004, 0.017, "#5d7d43");
+    g = ctx.createLinearGradient(0, 430, 0, H); g.addColorStop(0, "#c8a24c"); g.addColorStop(1, "#9a6f2e");
+    ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, 470); ctx.quadraticCurveTo(450, 410, W, 455); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.fill();
+    // barn
+    ctx.fillStyle = "#9b2f22"; ctx.fillRect(170, 380, 130, 85);
+    ctx.fillStyle = "#4a3c35"; ctx.beginPath(); ctx.moveTo(160, 384); ctx.lineTo(235, 340); ctx.lineTo(310, 384); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#5e1c15"; ctx.fillRect(220, 415, 32, 50);
+    ctx.fillStyle = "#efe7d6"; ctx.fillRect(228, 392, 16, 14);
+    // tree
+    ctx.fillStyle = "#4b3626"; ctx.fillRect(611, 350, 14, 80);
+    [[618,330,46,"#2f4a2a"],[592,350,34,"#355431"],[645,352,32,"#2b4427"],[618,300,32,"#3d5e35"]].forEach(([x,y,r,c]) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x,y,r,0,7); ctx.fill(); });
+    // path
+    ctx.strokeStyle = "#d8c69a"; ctx.lineWidth = 18; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(330, H); ctx.quadraticCurveTo(300, 500, 250, 468); ctx.stroke();
+    // grain, so sampling behaves like a photo
+    const im = ctx.getImageData(0, 0, W, H), d = im.data; let s = 12345;
+    for (let i = 0; i < d.length; i += 4) { s = (s * 1103515245 + 12345) & 0x7fffffff; const nz = (s % 13) - 6; d[i] += nz; d[i+1] += nz; d[i+2] += nz; }
+    ctx.putImageData(im, 0, 0);
+  }
+  function loadImageFile(file) {
+    if (!file || !/^image\//.test(file.type)) return;
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const max = 1600, sc = Math.min(1, max / Math.max(img.width, img.height));
+      canvas.width = Math.round(img.width * sc); canvas.height = Math.round(img.height * sc);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height); URL.revokeObjectURL(url);
+      $("photoCaption").textContent = `${file.name || "Pasted image"} · click or drag on it to pick a colour.`;
+      markerPos = null; $("marker").hidden = true;
+      sampleAt(canvas.width/2, canvas.height/2);
+    };
+    img.onerror = () => { $("photoCaption").textContent = "That file couldn't be opened as an image. Try a JPG or PNG."; };
+    img.src = url;
+  }
+  function sampleAt(x, y) {
+    x = Math.max(0, Math.min(canvas.width - 1, Math.round(x))); y = Math.max(0, Math.min(canvas.height - 1, Math.round(y)));
+    const r = Number($("sampleSize").value);
+    const x0 = Math.max(0, x - r), y0 = Math.max(0, y - r), w = Math.min(canvas.width, x + r + 1) - x0, h = Math.min(canvas.height, y + r + 1) - y0;
+    const d = ctx.getImageData(x0, y0, w, h).data; let R = 0, G = 0, B = 0, n = 0;
+    for (let i = 0; i < d.length; i += 4) { R += d[i]; G += d[i+1]; B += d[i+2]; n++; }
+    markerPos = [x, y]; placeMarker();
+    setTarget([Math.round(R/n), Math.round(G/n), Math.round(B/n)], `picked at ${x}, ${y}`);
+  }
+  function placeMarker() {
+    const m = $("marker"); if (!markerPos) { m.hidden = true; return; }
+    m.hidden = false; m.style.left = (100 * markerPos[0] / canvas.width) + "%"; m.style.top = (100 * markerPos[1] / canvas.height) + "%";
+  }
+  function setTarget(rgb, label, skipRender) {
+    target = { rgb, label };
+    $("targetSw").style.background = css(rgb);
+    $("targetInfo").textContent = `${hex(rgb)} · L* ${toLab(rgb)[0].toFixed(0)} · ${label}`;
+    $("solutions").innerHTML = ""; $("solveStatus").textContent = "";
+    $("solve").disabled = false;
+    if (!skipRender) renderCompare();
+  }
+  const stage = $("stage");
+  function evtPos(e) { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * canvas.width / r.width, (e.clientY - r.top) * canvas.height / r.height]; }
+  let dragging = false;
+  stage.addEventListener("pointerdown", e => { dragging = true; stage.setPointerCapture(e.pointerId); sampleAt(...evtPos(e)); });
+  stage.addEventListener("pointermove", e => { if (dragging) sampleAt(...evtPos(e)); });
+  stage.addEventListener("pointerup", () => dragging = false);
+  stage.addEventListener("pointercancel", () => dragging = false);
+  stage.addEventListener("dragover", e => { e.preventDefault(); stage.classList.add("drag"); });
+  stage.addEventListener("dragleave", () => stage.classList.remove("drag"));
+  stage.addEventListener("drop", e => { e.preventDefault(); stage.classList.remove("drag"); loadImageFile(e.dataTransfer.files[0]); });
+  $("file").addEventListener("change", e => { loadImageFile(e.target.files[0]); e.target.value = ""; });
+  document.addEventListener("paste", e => { const f = [...(e.clipboardData?.files || [])].find(f => f.type.startsWith("image/")); if (f) loadImageFile(f); });
+  $("sampleSize").addEventListener("change", () => { if (markerPos) sampleAt(...markerPos); });
+  $("hexForm").addEventListener("submit", e => {
+    e.preventDefault();
+    const m = $("hexIn").value.trim().match(/^#?([0-9a-f]{6}|[0-9a-f]{3})$/i);
+    if (!m) { $("hexIn").setCustomValidity("Use a hex like #7AA4D0"); $("hexIn").reportValidity(); return; }
+    $("hexIn").setCustomValidity("");
+    let h = m[1]; if (h.length === 3) h = h.split("").map(c => c + c).join("");
+    markerPos = null; placeMarker();
+    setTarget([0,2,4].map(i => parseInt(h.substr(i,2),16)), "typed");
+  });
+  $("hexIn").addEventListener("input", () => $("hexIn").setCustomValidity(""));
+
+  function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c])); }
+  function renderAll() { renderPalette(); renderBuilder(); renderMix(); }
+
+  // ---------- boot ----------
+  drawSampleScene();
+  renderTicks();
+  renderAll();
+  renderChart();
+  Paintings.init({ onChange: renderChart, onError: msg => status("chartStatus", msg, true) });
+  sampleAt(430, 110); // a patch of sky
+})();
+</script>

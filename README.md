@@ -2,7 +2,7 @@
 
 A single-page web app for experimenting with artist paint mixes and checking them against colours in a reference photo.
 
-Live version (private Claude artifact): https://claude.ai/artifact/Hem4R7VhaH1DAtDxSc1AYq
+Use it on the web: https://jlauko.github.io/paint-mixing-bench/
 
 ## Features
 
@@ -14,9 +14,9 @@ Live version (private Claude artifact): https://claude.ai/artifact/Hem4R7VhaH1DA
 
 ## Running it
 
-Open `paint-mixing-bench.html` in a modern browser. It loads Mixbox and Google Fonts from CDNs, so it needs an internet connection.
+Visit the GitHub Pages site above, or open `index.html` in a modern browser. It loads Mixbox and Google Fonts from CDNs, so it needs an internet connection.
 
-When the page is opened as a Claude artifact and you're signed in, colour charts are saved to your Claude account. When the file is opened directly, charts are saved in that browser's local storage.
+On GitHub Pages or a local copy, colour charts are saved in that browser's local storage, so they stay on that device and browser. (When the page runs as a Claude artifact with a signed-in viewer, charts are saved to the Claude account instead.)
 
 ## Licensing
 

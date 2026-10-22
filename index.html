@@ -154,6 +154,20 @@ input[type="text"], select { font: inherit; font-size: 14px; color: var(--ink); 
 .target-sw { width: 54px; height: 54px; border-radius: 10px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.2); }
 .target-row .row input[type="text"] { width: 110px; font-family: var(--f-mono); }
 
+/* colour wheel */
+.wheel-wrap { display: grid; grid-template-columns: minmax(0, 230px) minmax(0, 1fr); gap: 16px; align-items: center; border-top: 1px solid var(--line); padding-top: 14px; }
+@media (max-width: 520px) { .wheel-wrap { grid-template-columns: 1fr; justify-items: center; } }
+#wheel { width: 100%; max-width: 230px; height: auto; display: block; }
+#wheel .lbl { font: 600 11px var(--f-body); fill: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+#wheel .mk { font: 700 10px var(--f-body); }
+.wheel-text { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.wheel-text p { margin: 0; font-size: 14px; }
+.wheel-key { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
+.wheel-key span { display: inline-flex; align-items: center; gap: 5px; }
+.kd { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink); }
+.kd.dash { border-style: dashed; }
+.kd.small { width: 8px; height: 8px; border-width: 1px; background: var(--muted); }
+
 /* save + painting colour chart */
 .save-form { display: flex; flex-wrap: wrap; gap: 8px; }
 .save-form input { flex: 1 1 200px; }
@@ -310,6 +324,19 @@ footer a { color: var(--accent); }
             <input type="text" id="hexIn" placeholder="#7aa4d0" maxlength="7">
             <button type="submit">Use</button>
           </form>
+        </div>
+      </div>
+      <div class="wheel-wrap">
+        <svg id="wheel" viewBox="-150 -150 300 300" role="img" aria-labelledby="wheelNote"></svg>
+        <div class="wheel-text">
+          <h3>Colour wheel</h3>
+          <p id="wheelNote"></p>
+          <div class="wheel-key" aria-hidden="true">
+            <span><i class="kd"></i>P photo colour</span>
+            <span><i class="kd"></i>M your mix</span>
+            <span><i class="kd dash"></i>C complement</span>
+            <span><i class="kd small"></i>your paints</span>
+          </div>
         </div>
       </div>
     </section>
@@ -630,6 +657,7 @@ footer a { color: var(--accent); }
 
   function renderCompare() {
     const t = target && target.rgb, m = lastMix;
+    renderWheel();
     $("cmpT").style.background = t ? css(t) : "transparent";
     $("cmpM").style.background = m ? css(m) : "transparent";
     const adv = $("advice"); adv.innerHTML = ""; $("next").hidden = true; suggestion = null;
@@ -651,11 +679,11 @@ footer a { color: var(--accent); }
     const dL = lt[0] - lm[0];
     if (Math.abs(dL) < 2) items.push(["Value", "Lightness matches."]);
     else if (dL > 0) items.push(["Value", `Your mix is darker than the photo by ${dL.toFixed(0)} L*. Lighten it with white, or a light yellow if the colour is warm.`]);
-    else items.push(["Value", `Your mix is lighter than the photo by ${(-dL).toFixed(0)} L*. Darken it with a touch of a dark paint such as umber, black or the colour's complement.`]);
+    else items.push(["Value", `Your mix is lighter than the photo by ${(-dL).toFixed(0)} L*. Darken it with a touch of a dark paint such as umber, black or its complement (marked C on the colour wheel).`]);
     const Ct = Math.hypot(lt[1], lt[2]), Cm = Math.hypot(lm[1], lm[2]), dC = Ct - Cm;
     if (Math.abs(dC) < 3) items.push(["Intensity", "Saturation matches."]);
     else if (dC > 0) items.push(["Intensity", "The photo colour is more vivid. Use stronger, purer pigments and less white or black."]);
-    else items.push(["Intensity", "The photo colour is duller. Knock the mix back with a little of its complement or a grey."]);
+    else items.push(["Intensity", "The photo colour is duller. Knock the mix back with a little of its complement (marked C on the colour wheel) or a grey."]);
     if (Ct > 6 && Cm > 6) {
       const ht = (Math.atan2(lt[2], lt[1])*180/Math.PI + 360) % 360, hm = (Math.atan2(lm[2], lm[1])*180/Math.PI + 360) % 360;
       let dh = ht - hm; if (dh > 180) dh -= 360; if (dh < -180) dh += 360;
@@ -689,6 +717,84 @@ footer a { color: var(--accent); }
     state.parts[suggestion.p.id] = (state.parts[suggestion.p.id] || 0) + suggestion.d;
     persist(); updateCounts(); renderMix();
   });
+
+  // ---------- colour wheel (traditional painter's RYB wheel: red opposite green, blue opposite orange) ----------
+  function rgbHue(rgb) {
+    const [r, g, b] = rgb.map(v => v / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+    if (!d) return 0;
+    let h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    h *= 60; return h < 0 ? h + 360 : h;
+  }
+  // RGB hue → position on the RYB wheel (0 red, 60 orange, 120 yellow, 180 green, 240 blue, 300 violet)
+  const HUEMAP = [[0,0],[30,60],[60,120],[120,180],[180,210],[240,240],[270,280],[300,310],[330,335],[360,360]];
+  function hueInterp(x, from, to) {
+    x = ((x % 360) + 360) % 360;
+    for (let i = 1; i < HUEMAP.length; i++) {
+      const p = HUEMAP[i-1], q = HUEMAP[i];
+      if (x <= q[from]) return p[to] + (q[to] - p[to]) * (x - p[from]) / (q[from] - p[from]);
+    }
+    return x;
+  }
+  const rybOf = rgb => hueInterp(rgbHue(rgb), 0, 1);
+  const wheelColor = a => `hsl(${hueInterp(a, 1, 0).toFixed(1)}, 88%, 50%)`;
+  const RYB_NAMES = ["red","red-orange","orange","yellow-orange","yellow","yellow-green","green","blue-green","blue","blue-violet","violet","red-violet"];
+  const rybName = a => RYB_NAMES[Math.round((((a % 360) + 360) % 360) / 30) % 12];
+  const wheelXY = (a, r) => { const t = (a - 210) * Math.PI / 180; return [r * Math.cos(t), r * Math.sin(t)]; }; // yellow at top
+  const angDist = (a, b) => { const d = Math.abs(((a - b) % 360 + 360) % 360); return d > 180 ? 360 - d : d; };
+  const chromaOf = rgb => { const l = toLab(rgb); return Math.hypot(l[1], l[2]); };
+  const f1 = n => n.toFixed(1);
+
+  function renderWheel() {
+    const s = [], R1 = 112, R0 = 88;
+    for (let i = 0; i < 24; i++) {
+      const a0 = i * 15 - 7.5, a1 = a0 + 15;
+      const [x0, y0] = wheelXY(a0, R1), [x1, y1] = wheelXY(a1, R1), [x2, y2] = wheelXY(a1, R0), [x3, y3] = wheelXY(a0, R0);
+      s.push(`<path d="M${f1(x0)} ${f1(y0)}A${R1} ${R1} 0 0 1 ${f1(x1)} ${f1(y1)}L${f1(x2)} ${f1(y2)}A${R0} ${R0} 0 0 0 ${f1(x3)} ${f1(y3)}Z" fill="${wheelColor(i * 15)}" stroke="var(--surface)" stroke-width="1"></path>`);
+    }
+    s.push(`<circle r="${R0 - 2}" fill="var(--surface-2)"></circle>`);
+    [["Red",0],["Orange",60],["Yellow",120],["Green",180],["Blue",240],["Violet",300]].forEach(([n, a]) => {
+      const [x, y] = wheelXY(a, 132); s.push(`<text class="lbl" x="${f1(x)}" y="${f1(y + 4)}" text-anchor="middle">${n}</text>`);
+    });
+    // palette paints inside the ring: angle = hue, distance from centre = saturation
+    activePaints().forEach(p => {
+      const c = chromaOf(p.rgb);
+      const [x, y] = c < 8 ? [0, 0] : wheelXY(rybOf(p.rgb), 14 + 66 * Math.min(1, c / 100));
+      s.push(`<circle cx="${f1(x)}" cy="${f1(y)}" r="5" fill="${css(p.rgb)}" stroke="var(--ink)" stroke-opacity=".45" stroke-width="1"><title>${esc(p.name)}</title></circle>`);
+    });
+    const subj = lastMix || (target && target.rgb), subjLabel = lastMix ? "your mix" : "the photo colour";
+    const marker = (rgb, a, letter, dashed, r) => {
+      const [x, y] = wheelXY(a, r || (R0 + R1) / 2);
+      const light = dashed ? (a > 80 && a < 200) : toLab(rgb)[0] > 60; // the wheel's yellows and yellow-greens are light
+      return `<circle cx="${f1(x)}" cy="${f1(y)}" r="10" fill="${dashed ? wheelColor(a) : css(rgb)}" stroke="var(--ink)" stroke-width="2"${dashed ? ' stroke-dasharray="3 2"' : ""}></circle>
+        <text class="mk" x="${f1(x)}" y="${f1(y + 3.5)}" text-anchor="middle" fill="${light ? "#111" : "#fff"}">${letter}</text>`;
+    };
+    let note;
+    if (!subj) note = "Pick a colour in the photo or start a mix to see where it sits on the wheel.";
+    else if (chromaOf(subj) < 6) {
+      note = `${subjLabel[0].toUpperCase() + subjLabel.slice(1)} is nearly neutral (a grey), so it has no clear complement. To shift it, add a little of the hue you want it to lean toward.`;
+    } else {
+      const a = rybOf(subj), ca = (a + 180) % 360;
+      const [mx, my] = wheelXY(a, (R0 + R1) / 2), [cx, cy] = wheelXY(ca, (R0 + R1) / 2);
+      s.push(`<line x1="${f1(mx)}" y1="${f1(my)}" x2="${f1(cx)}" y2="${f1(cy)}" stroke="var(--ink)" stroke-opacity=".5" stroke-width="1.5" stroke-dasharray="4 3"></line>`);
+      const close = activePaints().filter(p => chromaOf(p.rgb) >= 12).map(p => ({ p, d: angDist(rybOf(p.rgb), ca) }))
+        .filter(x => x.d <= 40).sort((x, y) => x.d - y.d).slice(0, 3);
+      note = `The complement of ${subjLabel} (${rybName(a)}) is <b>${rybName(ca)}</b>, straight across the wheel. `;
+      if (close.length) note += `Closest on your palette: <b>${close.map(x => esc(x.p.name)).join(", ")}</b>. A little of it dulls or darkens the colour; too much turns it toward grey-brown.`;
+      else {
+        const inPal = new Set(state.palette);
+        const sugg = Object.values(CAT).filter(p => !inPal.has(p.id) && chromaOf(p.rgb) >= 12).map(p => ({ p, d: angDist(rybOf(p.rgb), ca) })).sort((x, y) => x.d - y.d)[0];
+        note += `None of your paints sit near it.${sugg ? ` You could add <b>${esc(sugg.p.name)}</b> with Choose paints.` : ""}`;
+      }
+      s.push(marker(subj, ca, "C", true));
+      if (lastMix) s.push(marker(lastMix, rybOf(lastMix), "M"));
+    }
+    if (target && chromaOf(target.rgb) >= 6) {
+      const pa = rybOf(target.rgb), crowded = lastMix && chromaOf(lastMix) >= 6 && angDist(pa, rybOf(lastMix)) < 14;
+      s.push(marker(target.rgb, pa, "P", false, crowded ? R0 - 14 : 0)); // step inside the ring when it would cover M
+    }
+    $("wheel").innerHTML = s.join("");
+    $("wheelNote").innerHTML = note;
+  }
 
   function renderTicks() {
     $("ticks").innerHTML = [0,1,2,5,10,20,30].map(v => `<span class="meter-tick" style="left:${meterPos(v)*100}%">${v}</span>`).join("");

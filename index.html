@@ -854,7 +854,9 @@ footer a { color: var(--accent); }
     if (Paintings.mode !== "loading") {
       status("chartStatus", Paintings.mode === "account"
         ? "Saved to your Claude account, so the charts are there whenever you open this page."
-        : "Saved in this browser only. Open the page signed in to Claude to keep the charts in your account.");
+        : window.claude
+          ? "Saved in this browser only. Open the page signed in to Claude to keep the charts in your account."
+          : "Saved in this browser on this device. Charts made on another device or browser won't appear here.");
     }
     const left = Paintings.localLeftovers().filter(p => !list.some(x => x.id === p.id));
     $("importRow").hidden = !left.length;

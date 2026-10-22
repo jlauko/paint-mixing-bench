@@ -194,6 +194,28 @@ input[type="text"], select { font: inherit; font-size: 14px; color: var(--ink); 
 .card .row button { font-size: 12px; padding: 5px 9px; }
 .card .rename input { width: 100%; }
 button.danger { color: var(--bad); }
+/* colour strings: a base colour plus the shades mixed from it */
+.chart-body { display: flex; flex-direction: column; gap: 18px; }
+.string { border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 12px; background: var(--surface-2); }
+.string-head { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; }
+.string-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+h3.string-name { font-family: var(--f-display); font-size: 20px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--ink); overflow-wrap: anywhere; }
+.ramp { display: flex; height: 30px; border-radius: 7px; overflow: hidden; flex: 1 1 160px; max-width: 340px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.ramp i { flex: 1; }
+.string-head .row button, .section-head .row button { font-size: 12px; padding: 5px 9px; }
+.badge { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); align-self: center; }
+.badge.soft { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+.steps-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
+.steps-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+.plan { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+.plan ol { margin: 6px 0 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.plan p { margin: 0; }
+.section-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; justify-content: space-between; }
+.card .mk-form { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+.card .mk-form input { flex: 1 1 120px; }
+.derive-banner { background: color-mix(in srgb, var(--accent) 10%, var(--surface)); border: 1px solid var(--accent); border-radius: 10px; padding: 8px 10px; display: flex; gap: 8px 10px; align-items: center; justify-content: space-between; flex-wrap: wrap; font-size: 13px; margin-bottom: 4px; }
+.derive-banner span { flex: 1 1 200px; }
+.paint.base .tube { outline: 2px solid var(--accent); outline-offset: 2px; }
 textarea.copybox { width: 100%; min-height: 160px; font-family: var(--f-mono); font-size: 12px; background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
 footer { margin-top: 22px; color: var(--muted); font-size: 12.5px; max-width: 80ch; }
 footer a { color: var(--accent); }
@@ -369,7 +391,7 @@ footer a { color: var(--accent); }
         <button type="button" id="importLocal">Move them to my account</button>
       </div>
       <textarea class="copybox" id="copyBox" hidden readonly aria-label="Colour list as text"></textarea>
-      <div class="color-list" id="colorList"></div>
+      <div class="chart-body" id="colorList"></div>
     </section>
   </main>
 
@@ -463,7 +485,19 @@ footer a { color: var(--accent); }
   let target = null; // {rgb, label}
 
   function paintById(id) { return CAT[id] || state.custom.find(p => p.id === id); }
-  function activePaints() { return state.palette.map(paintById).filter(Boolean); }
+  // While you mix shades for a colour string, its base colour acts as one more paint on the palette.
+  const BASE_ID = "__base";
+  let derive = null; // {paintingId, colorId} of the base being used
+  function baseColor() {
+    if (!derive) return null;
+    const p = Paintings.list.find(x => x.id === derive.paintingId);
+    return (p && p.colors.find(c => c.id === derive.colorId)) || null;
+  }
+  function basePaint() { const c = baseColor(); return c ? { id: BASE_ID, name: c.name + " (base)", rgb: c.rgb, fam: "Base", isBase: true } : null; }
+  function activePaints() {
+    const l = state.palette.map(paintById).filter(Boolean), b = basePaint();
+    return b ? [b].concat(l) : l;
+  }
 
   // ---------- colour math ----------
   const latentCache = new Map();
@@ -551,10 +585,17 @@ footer a { color: var(--accent); }
       $("builder").hidden = false; $("toggleBuilder").setAttribute("aria-expanded", "true");
       return;
     }
+    const bc = baseColor();
+    if (bc) {
+      const banner = document.createElement("div"); banner.className = "derive-banner";
+      banner.innerHTML = `<span>Mixing a shade of <b>${esc(bc.name)}</b>. Its base is the first paint below. Keep some base and add other paints to lighten, darken or shift it.</span>
+        <button type="button" class="ghost" id="stopDerive">Stop using base</button>`;
+      list.appendChild(banner);
+    }
     paints.forEach(p => {
       const n = state.parts[p.id] || 0;
       const row = document.createElement("div");
-      row.className = "paint" + (n > 0 ? " active" : "");
+      row.className = "paint" + (n > 0 ? " active" : "") + (p.isBase ? " base" : "");
       row.dataset.id = p.id;
       row.innerHTML = `<span class="tube" style="background:${css(p.rgb)}"></span>
         <span class="paint-name">${esc(p.name)}<small>${p.fam ? esc(p.fam.replace(/s$|s &.*$/, "")) : "Custom"} · <span class="mono">${hex(p.rgb)}</span></small></span>
@@ -573,7 +614,9 @@ footer a { color: var(--accent); }
       row.classList.toggle("active", n > 0);
     });
   }
+  function stopDerive() { derive = null; delete state.parts[BASE_ID]; persist(); renderPalette(); renderMix(); }
   $("paintList").addEventListener("click", e => {
+    if (e.target.closest("#stopDerive")) { stopDerive(); status("saveStatus", "Stopped using the base. New mixes save as separate colours."); return; }
     const b = e.target.closest("button[data-d]"); if (!b) return;
     const id = b.closest(".paint").dataset.id;
     const n = Math.max(0, Math.min(99, (state.parts[id] || 0) + Number(b.dataset.d)));
@@ -652,6 +695,7 @@ footer a { color: var(--accent); }
     $("rRgb").textContent = rgb ? rgb.join(", ") : "—";
     $("rL").textContent = rgb ? toLab(rgb)[0].toFixed(1) : "—";
     $("saveBtn").disabled = !rgb;
+    updateSaveLabel();
     renderCompare();
   }
 
@@ -924,28 +968,103 @@ footer a { color: var(--accent); }
   function setCurrent(id) { currentId = id; try { localStorage.setItem(CUR_KEY, id); } catch (e) {} renderChart(); }
   function status(id, msg, isErr) { const el = $(id); el.textContent = msg; el.classList.toggle("err", !!isErr); }
 
+  // A colour's mix. A shade of a string's base is stored as "baseParts of the base + recipe", so it
+  // follows the base if the base recipe changes later.
   function snapshotMix() {
     const entries = currentEntries(); if (!entries.length) return null;
     const rgb = mixParts(entries);
-    return {
-      recipe: entries.map(([p, n]) => ({ id: p.id, name: p.name, rgb: p.rgb.slice(), parts: n })).sort((a, b) => b.parts - a.parts),
+    const baseE = entries.find(([p]) => p.id === BASE_ID), base = baseE ? baseColor() : null;
+    const out = {
+      recipe: entries.filter(([p]) => p.id !== BASE_ID).map(([p, n]) => ({ id: p.id, name: p.name, rgb: p.rgb.slice(), parts: n })).sort((a, b) => b.parts - a.parts),
       rgb, target: target ? target.rgb.slice() : null,
       de: target ? Math.round(de2000(toLab(target.rgb), toLab(rgb)) * 10) / 10 : null
     };
+    if (base) { out.parentId = base.id; out.baseParts = baseE[1]; }
+    return out;
+  }
+  function shadeRgb(baseRgb, baseParts, recipe) {
+    return mixParts([[{ rgb: baseRgb }, baseParts]].concat(recipe.map(r => [{ rgb: r.rgb }, r.parts])));
+  }
+  const stringsOf = p => p.strings || (p.strings = []);
+  const shadesOf = (p, baseId) => p.colors.filter(c => c.parentId === baseId);
+  const byLight = (a, b) => toLab(b.rgb)[0] - toLab(a.rgb)[0];
+  const partsWord = n => n === 1 ? "part" : "parts";
+
+  function updateSaveLabel() {
+    const bc = baseColor(), mixUsesBase = bc && (state.parts[BASE_ID] || 0) > 0;
+    let label;
+    if (mixUsesBase) label = `Save as shade of ${bc.name}`;
+    else {
+      const cur = currentPainting(); label = `Save to ${cur ? cur.name : "My painting"}`;
+    }
+    $("saveBtn").textContent = label.length > 30 ? label.slice(0, 29) + "…" : label;
   }
 
   $("saveForm").addEventListener("submit", e => {
     e.preventDefault();
     const mix = snapshotMix(); if (!mix) { status("saveStatus", "Add some paint to the mix first.", true); return; }
-    let p = currentPainting();
-    if (!p) { p = { id: newId("p-"), name: "My painting", created: Date.now(), colors: [] }; currentId = p.id; try { localStorage.setItem(CUR_KEY, p.id); } catch (e2) {} }
+    let p;
+    if (mix.parentId) p = Paintings.list.find(x => x.id === derive.paintingId);
+    else p = currentPainting();
+    if (!p) { p = { id: newId("p-"), name: "My painting", created: Date.now(), colors: [], strings: [] }; }
     else p = JSON.parse(JSON.stringify(p));
-    const name = $("colorName").value.trim() || `Colour ${p.colors.length + 1}`;
+    currentId = p.id; try { localStorage.setItem(CUR_KEY, p.id); } catch (e2) {}
+    const base = mix.parentId && p.colors.find(c => c.id === mix.parentId);
+    const name = $("colorName").value.trim() || (base ? `${base.name} shade ${shadesOf(p, base.id).length + 1}` : `Colour ${p.colors.length + 1}`);
     p.colors.push(Object.assign({ id: newId("c-"), name, saved: Date.now() }, mix));
     Paintings.save(p);
     $("colorName").value = "";
-    status("saveStatus", `Saved "${name}" to ${p.name}.`);
+    status("saveStatus", base ? `Saved "${name}" as a shade of ${base.name}.` : `Saved "${name}" to ${p.name}.`);
   });
+
+  let openSteps = null, openPlan = new Set();
+  function cardHtml(p, c, role, num) {
+    const [vt, vc] = c.de != null ? verdictFor(c.de) : ["", ""];
+    const base = role === "shade" ? p.colors.find(x => x.id === c.parentId) : null;
+    const lines = (base ? [`<li><i style="background:${css(base.rgb)}"></i><b>${c.baseParts}</b><span>${partsWord(c.baseParts)} ${esc(base.name)} (base)</span></li>`] : [])
+      .concat(c.recipe.map(r => `<li><i style="background:${css(r.rgb)}"></i><b>${r.parts}</b><span>${partsWord(r.parts)} ${esc(r.name)}</span></li>`));
+    const extra = role === "base" ? `<button type="button" class="ghost" data-act="derive" title="Mix a lighter, darker or shifted version of this colour">Add a shade</button>`
+      : role === "loose" ? `<button type="button" class="ghost" data-act="mkstring" title="Make this the base of a group of shades, such as a face">Start a string</button>` : "";
+    return `<article class="card" data-id="${esc(c.id)}">
+      <div class="sw">${c.target ? `<div class="${toLab(c.target)[0] > 62 ? "lt" : ""}" style="background:${css(c.target)}">Photo</div>` : ""}<div class="${toLab(c.rgb)[0] > 62 ? "lt" : ""}" style="background:${css(c.rgb)}">Mix</div></div>
+      <div class="card-body">
+        <div class="card-name"><span class="num">${String(num).padStart(2, "0")}</span><span class="nm">${esc(c.name)}</span>${role === "base" ? '<span class="badge">Base</span>' : ""}</div>
+        <div class="card-meta">${hex(c.rgb)} · L* ${toLab(c.rgb)[0].toFixed(0)}${c.de != null ? ` · ΔE ${c.de.toFixed(1)} <span class="${vc}">${vt}</span>` : ""}</div>
+        <ul>${lines.join("")}</ul>
+        <div class="row">
+          <button type="button" data-act="load" title="Put this recipe back on the mixing slab">Load</button>
+          <button type="button" class="ghost" data-act="update" title="Replace this recipe with the current mix">Use current mix</button>
+          ${extra}
+          <button type="button" class="ghost" data-act="rename">Rename</button>
+          <button type="button" class="ghost danger" data-act="del">Delete</button>
+        </div>
+      </div></article>`;
+  }
+  function planHtml(p, s) {
+    const base = p.colors.find(c => c.id === s.baseId), shades = shadesOf(p, base.id).sort(byLight);
+    const need = 4 + shades.reduce((t, c) => t + c.baseParts, 0);
+    const baseRecipe = base.recipe.map(r => `${r.parts} ${partsWord(r.parts)} ${esc(r.name)}`).join(", ");
+    return `<p><b>Mixing plan for ${esc(s.name)}.</b> One "part" is whatever scoop you use, such as a palette-knife load.</p>
+      <ol>
+        <li>Mix a pile of the base, <b>${esc(base.name)}</b>: ${baseRecipe || "(no recipe)"}. Make about <b>${need} parts</b> in total: 4 to keep as ${esc(base.name)}${shades.length ? ", plus what each shade below takes" : ""}.</li>
+        ${shades.map(c => `<li><b>${esc(c.name)}</b>: take ${c.baseParts} ${partsWord(c.baseParts)} of base${c.recipe.length ? " and add " + c.recipe.map(r => `${r.parts} ${partsWord(r.parts)} ${esc(r.name)}`).join(", ") : ""}.</li>`).join("")}
+      </ol>`;
+  }
+  function stepsFormHtml(s) {
+    const paints = state.palette.map(paintById).filter(Boolean);
+    const pick = (ids, fallback) => (ids.find(id => paints.some(p => p.id === id)) || fallback);
+    const byL = paints.slice().sort((a, b) => toLab(b.rgb)[0] - toLab(a.rgb)[0]);
+    const light = pick(["titanium-white", "zinc-white", "unbleached-titanium", "naples-yellow"], byL[0] && byL[0].id);
+    const dark = pick(["burnt-umber", "raw-umber", "van-dyke", "ivory-black", "mars-black", "paynes-grey"], byL[byL.length - 1] && byL[byL.length - 1].id);
+    const opts = sel => paints.map(p => `<option value="${esc(p.id)}"${p.id === sel ? " selected" : ""}>${esc(p.name)}</option>`).join("");
+    return `<form class="steps-form" data-sid="${esc(s.id)}">
+      <label>Lighten with<select name="light">${opts(light)}</select></label>
+      <label>Darken with<select name="dark">${opts(dark)}</select></label>
+      <label>Steps each way<select name="n"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></label>
+      <button class="primary" type="submit">Add value steps</button>
+      <button class="ghost" type="button" data-sact="steps">Cancel</button>
+    </form>`;
+  }
 
   function renderChart() {
     const list = Paintings.list, cur = currentPainting();
@@ -955,8 +1074,7 @@ footer a { color: var(--accent); }
     if (cur) sel.value = cur.id;
     ["renamePainting", "deletePainting", "copyList", "downloadList"].forEach(id => $(id).disabled = !cur);
     if (!confirmingDelete) $("deletePainting").textContent = "Delete painting";
-    const saveTo = cur ? cur.name : "My painting";
-    $("saveBtn").textContent = `Save to ${saveTo.length > 22 ? saveTo.slice(0, 21) + "…" : saveTo}`;
+    updateSaveLabel();
     if (Paintings.mode !== "loading") {
       status("chartStatus", Paintings.mode === "account"
         ? "Saved to your Claude account, so the charts are there whenever you open this page."
@@ -968,27 +1086,44 @@ footer a { color: var(--accent); }
     $("importRow").hidden = !left.length;
     if (left.length) $("importText").textContent = `${left.length} painting${left.length > 1 ? "s" : ""} saved earlier in this browser only.`;
 
+    // the base being mixed from may have been deleted (here or on another device)
+    if (derive && !baseColor()) { derive = null; renderPalette(); renderMix(); }
+
     const el = $("colorList");
     if (!cur || !cur.colors.length) {
-      el.innerHTML = `<div class="empty" style="grid-column:1/-1">No colours saved for ${esc(cur ? cur.name : "this painting")} yet. Mix a colour, give it a name above the comparison, and press <b>Save to painting</b>. Each colour keeps its recipe, the photo colour it was matched to, and how close it came.</div>`;
+      el.innerHTML = `<div class="empty">No colours saved for ${esc(cur ? cur.name : "this painting")} yet. Mix a colour, give it a name, and press <b>Save to painting</b>. Each colour keeps its recipe, the photo colour it was matched to, and how close it came. To group the shades of a face or an object, save its main colour and press <b>Start a string</b> on it.</div>`;
       return;
     }
-    el.innerHTML = cur.colors.map((c, i) => {
-      const [vt, vc] = c.de != null ? verdictFor(c.de) : ["", ""];
-      return `<article class="card" data-id="${esc(c.id)}">
-        <div class="sw">${c.target ? `<div class="${toLab(c.target)[0] > 62 ? "lt" : ""}" style="background:${css(c.target)}">Photo</div>` : ""}<div class="${toLab(c.rgb)[0] > 62 ? "lt" : ""}" style="background:${css(c.rgb)}">Mix</div></div>
-        <div class="card-body">
-          <div class="card-name"><span class="num">${String(i + 1).padStart(2, "0")}</span><span class="nm">${esc(c.name)}</span></div>
-          <div class="card-meta">${hex(c.rgb)}${c.de != null ? ` · ΔE ${c.de.toFixed(1)} <span class="${vc}">${vt}</span>` : ""}</div>
-          <ul>${c.recipe.map(r => `<li><i style="background:${css(r.rgb)}"></i><b>${r.parts}</b><span>${r.parts === 1 ? "part" : "parts"} ${esc(r.name)}</span></li>`).join("")}</ul>
+    const num = new Map(cur.colors.map((c, i) => [c.id, i + 1]));
+    const strings = stringsOf(cur).filter(s => cur.colors.some(c => c.id === s.baseId));
+    const html = strings.map(s => {
+      const base = cur.colors.find(c => c.id === s.baseId), shades = shadesOf(cur, base.id).sort(byLight);
+      const ramp = [base].concat(shades).sort(byLight);
+      return `<section class="string" data-sid="${esc(s.id)}">
+        <div class="string-head">
+          <div class="string-title"><h3 class="string-name">${esc(s.name)}</h3>
+            <span class="small muted">Colour string · base ${esc(base.name)} · ${shades.length} ${shades.length === 1 ? "shade" : "shades"}</span></div>
+          <div class="ramp" role="img" aria-label="${esc(s.name)} from light to dark">${ramp.map(c => `<i style="background:${css(c.rgb)}" title="${esc(c.name)}"></i>`).join("")}</div>
           <div class="row">
-            <button type="button" data-act="load" title="Put this recipe back on the mixing slab">Load</button>
-            <button type="button" class="ghost" data-act="update" title="Replace this recipe with the current mix">Use current mix</button>
-            <button type="button" class="ghost" data-act="rename">Rename</button>
-            <button type="button" class="ghost danger" data-act="del">Delete</button>
+            <button type="button" data-sact="derive">Add a shade</button>
+            <button type="button" data-sact="steps">Value steps</button>
+            <button type="button" data-sact="plan" aria-expanded="${openPlan.has(s.id)}">Mixing plan</button>
+            <button type="button" class="ghost" data-sact="srename">Rename</button>
+            <button type="button" class="ghost danger" data-sact="sdel">Delete string</button>
           </div>
-        </div></article>`;
-    }).join("");
+        </div>
+        ${openSteps === s.id ? stepsFormHtml(s) : ""}
+        ${openPlan.has(s.id) ? `<div class="plan">${planHtml(cur, s)}</div>` : ""}
+        <div class="color-list">${[base].concat(shades).map(c => cardHtml(cur, c, c === base ? "base" : "shade", num.get(c.id))).join("")}</div>
+      </section>`;
+    });
+    const loose = cur.colors.filter(c => !c.parentId && !strings.some(s => s.baseId === c.id));
+    if (loose.length) {
+      html.push(`<section class="loose">
+        ${strings.length ? `<div class="section-head" style="margin-bottom:10px"><h3>Other colours</h3></div>` : ""}
+        <div class="color-list">${loose.map(c => cardHtml(cur, c, "loose", num.get(c.id))).join("")}</div></section>`);
+    }
+    el.innerHTML = html.join("");
   }
 
   $("paintingSel").addEventListener("change", e => { if (e.target.value) setCurrent(e.target.value); });
@@ -1008,7 +1143,7 @@ footer a { color: var(--accent); }
     e.preventDefault();
     const name = $("paintingName").value.trim(); if (!name) { $("paintingName").focus(); return; }
     if (paintingFormMode === "new") {
-      const p = { id: newId("p-"), name, created: Date.now(), colors: [] };
+      const p = { id: newId("p-"), name, created: Date.now(), colors: [], strings: [] };
       currentId = p.id; try { localStorage.setItem(CUR_KEY, p.id); } catch (e2) {}
       Paintings.save(p);
     } else {
@@ -1028,13 +1163,57 @@ footer a { color: var(--accent); }
   });
   $("importLocal").addEventListener("click", () => { Paintings.importLocal(); renderChart(); });
 
+  function startDerive(p, base) {
+    derive = { paintingId: p.id, colorId: base.id };
+    state.parts = { [BASE_ID]: 4 };
+    persist(); renderAll();
+    status("saveStatus", `Mixing a shade of ${base.name}: 4 parts of base are on the slab. Add a paint to lighten, darken or shift it, then save.`);
+    document.querySelector(".palette").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  function inlineRename(holder, current, label, onDone) {
+    holder.innerHTML = `<form class="rename"><input type="text" maxlength="60" aria-label="${label}" value="${esc(current)}"></form>`;
+    const f = holder.querySelector("form"), inp = f.querySelector("input");
+    inp.focus(); inp.select();
+    const done = () => { const v = inp.value.trim(); if (v && v !== current) onDone(v); else renderChart(); };
+    f.addEventListener("submit", ev => { ev.preventDefault(); inp.removeEventListener("blur", done); done(); });
+    inp.addEventListener("blur", done);
+    inp.addEventListener("keydown", ev => { if (ev.key === "Escape") { inp.removeEventListener("blur", done); renderChart(); } });
+  }
+
   $("colorList").addEventListener("click", e => {
+    const p = currentPainting(); if (!p) return;
+    const q = JSON.parse(JSON.stringify(p)); stringsOf(q);
+
+    // string-level actions
+    const sb = e.target.closest("button[data-sact]");
+    if (sb) {
+      const sec = sb.closest(".string"), s = q.strings.find(x => x.id === sec.dataset.sid); if (!s) return;
+      const base = q.colors.find(c => c.id === s.baseId), act = sb.dataset.sact;
+      if (act === "derive") startDerive(q, base);
+      else if (act === "steps") { openSteps = openSteps === s.id ? null : s.id; renderChart(); }
+      else if (act === "plan") { openPlan.has(s.id) ? openPlan.delete(s.id) : openPlan.add(s.id); renderChart(); }
+      else if (act === "srename") inlineRename(sec.querySelector(".string-name"), s.name, "String name", v => { s.name = v; Paintings.save(q); });
+      else if (act === "sdel") {
+        if (sb.dataset.confirm !== "1") {
+          sb.dataset.confirm = "1";
+          sb.textContent = `Confirm: delete ${s.name} and its ${shadesOf(q, base.id).length + 1} colours`;
+          return;
+        }
+        q.colors = q.colors.filter(c => c.id !== base.id && c.parentId !== base.id);
+        q.strings = q.strings.filter(x => x.id !== s.id);
+        Paintings.save(q);
+      }
+      return;
+    }
+
+    // colour-level actions
     const b = e.target.closest("button[data-act]"); if (!b) return;
-    const card = b.closest(".card"), p = currentPainting(); if (!p) return;
-    const q = JSON.parse(JSON.stringify(p)), c = q.colors.find(x => x.id === card.dataset.id); if (!c) return;
-    const act = b.dataset.act;
+    const card = b.closest(".card"), c = q.colors.find(x => x.id === card.dataset.id); if (!c) return;
+    const act = b.dataset.act, str = q.strings.find(s => s.baseId === c.id);
     if (act === "load") {
       state.parts = {};
+      if (c.parentId) { derive = { paintingId: q.id, colorId: c.parentId }; state.parts[BASE_ID] = c.baseParts; }
+      else derive = null;
       c.recipe.forEach(r => {
         if (!paintById(r.id)) state.custom.push({ id: r.id, name: r.name, rgb: r.rgb });
         if (!state.palette.includes(r.id)) state.palette.push(r.id);
@@ -1046,29 +1225,76 @@ footer a { color: var(--accent); }
       document.querySelector(".mix").scrollIntoView({ behavior: "smooth", block: "start" });
     } else if (act === "update") {
       const mix = snapshotMix(); if (!mix) { status("saveStatus", "Add some paint to the mix first.", true); return; }
-      Object.assign(c, mix, { saved: Date.now() }); Paintings.save(q);
+      if (c.parentId && mix.parentId !== c.parentId) { status("saveStatus", `To change this shade, press Load on it first so its base is on the palette.`, true); return; }
+      if (!c.parentId && mix.parentId) { status("saveStatus", `This mix is a shade of another colour. Save it as a new colour instead.`, true); return; }
+      Object.assign(c, mix, { saved: Date.now() });
+      if (str) shadesOf(q, c.id).forEach(k => { // the base changed: its shades follow it
+        k.rgb = shadeRgb(c.rgb, k.baseParts, k.recipe);
+        k.de = k.target ? Math.round(de2000(toLab(k.target), toLab(k.rgb)) * 10) / 10 : null;
+      });
+      Paintings.save(q);
+      status("saveStatus", str ? `Updated ${c.name} and its ${shadesOf(q, c.id).length} shades.` : `Updated ${c.name}.`);
     } else if (act === "del") {
-      if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "Confirm delete"; return; }
-      q.colors = q.colors.filter(x => x.id !== c.id); Paintings.save(q);
+      const kids = str ? shadesOf(q, c.id).length : 0;
+      if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = kids ? `Confirm: delete with its ${kids} shades` : "Confirm delete"; return; }
+      q.colors = q.colors.filter(x => x.id !== c.id && x.parentId !== c.id);
+      if (str) q.strings = q.strings.filter(s => s !== str);
+      Paintings.save(q);
     } else if (act === "rename") {
-      const nm = card.querySelector(".nm");
-      nm.innerHTML = `<form class="rename"><input type="text" maxlength="60" aria-label="Colour name" value="${esc(c.name)}"></form>`;
-      const f = nm.querySelector("form"), inp = f.querySelector("input");
-      inp.focus(); inp.select();
-      const done = () => { const v = inp.value.trim(); if (v && v !== c.name) { c.name = v; Paintings.save(q); } else renderChart(); };
-      f.addEventListener("submit", ev => { ev.preventDefault(); inp.removeEventListener("blur", done); done(); });
-      inp.addEventListener("blur", done);
-      inp.addEventListener("keydown", ev => { if (ev.key === "Escape") { inp.removeEventListener("blur", done); renderChart(); } });
-    }
+      inlineRename(card.querySelector(".nm"), c.name, "Colour name", v => { c.name = v; Paintings.save(q); });
+    } else if (act === "derive") {
+      startDerive(q, c);
+    } else if (act === "mkstring") {
+      const row = card.querySelector(".row");
+      row.outerHTML = `<form class="mk-form"><input type="text" maxlength="40" aria-label="String name" placeholder="String name, e.g. Face"><button class="primary" type="submit">Create</button><button class="ghost" type="button" data-act="cancel">Cancel</button></form>`;
+      const f = card.querySelector(".mk-form"), inp = f.querySelector("input"); inp.focus();
+      f.addEventListener("submit", ev => {
+        ev.preventDefault();
+        const name = inp.value.trim() || c.name;
+        q.strings.push({ id: newId("s-"), name, baseId: c.id });
+        Paintings.save(q);
+        status("saveStatus", `Started the ${name} string with ${c.name} as its base. Press Add a shade or Value steps on it.`);
+      });
+    } else if (act === "cancel") renderChart();
+  });
+
+  $("colorList").addEventListener("submit", e => {
+    const f = e.target.closest(".steps-form"); if (!f) return;
+    e.preventDefault();
+    const p = currentPainting(); if (!p) return;
+    const q = JSON.parse(JSON.stringify(p)), s = stringsOf(q).find(x => x.id === f.dataset.sid); if (!s) return;
+    const base = q.colors.find(c => c.id === s.baseId), n = Number(f.elements.n.value);
+    const lp = paintById(f.elements.light.value), dp = paintById(f.elements.dark.value); if (!lp || !dp) return;
+    const make = (paint, i, baseParts, word) => {
+      const recipe = [{ id: paint.id, name: paint.name, rgb: paint.rgb.slice(), parts: i }];
+      return { id: newId("c-"), name: `${base.name} ${word} ${i}`, saved: Date.now(), parentId: base.id, baseParts, recipe, rgb: shadeRgb(base.rgb, baseParts, recipe), target: null, de: null };
+    };
+    for (let i = 1; i <= n; i++) q.colors.push(make(lp, i, 4, "light"));
+    for (let i = 1; i <= n; i++) q.colors.push(make(dp, i, 8, "dark"));
+    openSteps = null;
+    Paintings.save(q);
+    status("chartStatus", `Added ${n * 2} value steps to ${s.name}. Load any of them to fine-tune it against the photo.`);
   });
 
   function chartText(p) {
     const lines = [`${p.name}: colour mixes`, ""];
-    p.colors.forEach((c, i) => {
-      lines.push(`${i + 1}. ${c.name}   mix ${hex(c.rgb)}${c.target ? `   photo ${hex(c.target)}   ΔE ${c.de.toFixed(1)}` : ""}`);
-      c.recipe.forEach(r => lines.push(`     ${r.parts} ${r.parts === 1 ? "part " : "parts"} ${r.name}`));
-      lines.push("");
+    const recipeLines = c => c.recipe.map(r => `     ${r.parts} ${r.parts === 1 ? "part " : "parts"} ${r.name}`);
+    const head = (c, i) => `${i}. ${c.name}   mix ${hex(c.rgb)}${c.target ? `   photo ${hex(c.target)}   ΔE ${c.de.toFixed(1)}` : ""}`;
+    const num = new Map(p.colors.map((c, i) => [c.id, i + 1]));
+    const strings = stringsOf(p).filter(s => p.colors.some(c => c.id === s.baseId));
+    strings.forEach(s => {
+      const base = p.colors.find(c => c.id === s.baseId), shades = shadesOf(p, base.id).sort(byLight);
+      const need = 4 + shades.reduce((t, c) => t + c.baseParts, 0);
+      lines.push(`== ${s.name} (colour string) ==`);
+      lines.push(`Mix about ${need} parts of the base first, then split it into piles for the shades.`, "");
+      lines.push(head(base, num.get(base.id)) + "   [base]", ...recipeLines(base), "");
+      shades.forEach(c => {
+        lines.push(head(c, num.get(c.id)), `     ${c.baseParts} ${c.baseParts === 1 ? "part " : "parts"} ${base.name} (base)`, ...recipeLines(c), "");
+      });
     });
+    const loose = p.colors.filter(c => !c.parentId && !strings.some(s => s.baseId === c.id));
+    if (loose.length && strings.length) lines.push("== Other colours ==", "");
+    loose.forEach(c => { lines.push(head(c, num.get(c.id)), ...recipeLines(c), ""); });
     return lines.join("\n");
   }
   $("copyList").addEventListener("click", () => {

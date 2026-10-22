@@ -11,6 +11,8 @@ Use it on the web: https://jlauko.github.io/paint-mixing-bench/
 - **Photo comparison**: upload, drop or paste a photo, then click it to pick a target colour. The app shows the ΔE 2000 colour difference, advice on value, intensity and hue, a value (greyscale) check, and a suggested next step.
 - **Recipe finder**: searches combinations of up to three paints from your palette for the closest match to the target.
 - **Colour charts per painting**: name and save each colour you mix, with its recipe and the photo colour it was matched to. You can copy a chart as text or download it.
+- **Colour strings**: group a base colour (such as a forehead) with the lighter, darker or shifted shades mixed from it (such as the rest of a face). Shades are stored as "parts of base + other paint", so they follow the base if it changes. Value steps can be generated automatically, and each string has a mixing plan: mix enough base first, then split it into piles.
+- **Colour wheel**: a painter's red-yellow-blue wheel that marks the photo colour, your mix and its complement, and names the paints on your palette closest to the complement.
 
 ## Running it
 

@@ -12,6 +12,7 @@ Use it on the web: https://jlauko.github.io/paint-mixing-bench/
 - **Recipe finder**: searches combinations of up to three paints from your palette for the closest match to the target.
 - **Colour charts per painting**: name and save each colour you mix, with its recipe and the photo colour it was matched to. You can copy a chart as text or download it.
 - **Colour strings**: group a base colour (such as a forehead) with the lighter, darker or shifted shades mixed from it (such as the rest of a face). Shades are stored as "parts of base + other paint", so they follow the base if it changes. Value steps can be generated automatically, and each string has a mixing plan: mix enough base first, then split it into piles.
+- **Save & print**: print a painting's chart (or save it as a PDF from the print dialog), download it as a printable HTML page or a text file, and back up all paintings to a JSON file that can be restored on another device or browser.
 - **Colour wheel**: a painter's red-yellow-blue wheel that marks the photo colour, your mix and its complement, and names the paints on your palette closest to the complement.
 
 ## Running it

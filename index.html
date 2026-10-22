@@ -194,6 +194,12 @@ input[type="text"], select { font: inherit; font-size: 14px; color: var(--ink); 
 .card .row button { font-size: 12px; padding: 5px 9px; }
 .card .rename input { width: 100%; }
 button.danger { color: var(--bad); }
+.save-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 0; border-block: 1px solid var(--line); }
+.save-row button, .save-row .btn { font-size: 13px; padding: 6px 11px; }
+.save-row .sep { width: 1px; height: 22px; background: var(--line); }
+.btn.ghost-btn { background: transparent; border-color: transparent; color: var(--muted); }
+.btn.ghost-btn:hover { color: var(--ink); border-color: var(--line); }
+label.btn:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* colour strings: a base colour plus the shades mixed from it */
 .chart-body { display: flex; flex-direction: column; gap: 18px; }
 .string { border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 12px; background: var(--surface-2); }
@@ -375,9 +381,17 @@ footer a { color: var(--accent); }
           <button type="button" id="newPainting">New painting</button>
           <button type="button" class="ghost" id="renamePainting">Rename</button>
           <button type="button" class="ghost danger" id="deletePainting">Delete painting</button>
-          <button type="button" id="copyList">Copy list</button>
-          <button type="button" id="downloadList" hidden>Download as text</button>
         </div>
+      </div>
+      <div class="save-row" role="group" aria-label="Save and print">
+        <span class="small muted">Save &amp; print:</span>
+        <button type="button" class="primary" id="printChart">Print chart</button>
+        <button type="button" id="dlHtml">Printable page (.html)</button>
+        <button type="button" id="dlText">Text (.txt)</button>
+        <button type="button" class="ghost" id="copyList">Copy list</button>
+        <span class="sep" aria-hidden="true"></span>
+        <button type="button" class="ghost" id="dlBackup" title="Every painting, so you can keep a copy or move them to another device">Back up all paintings</button>
+        <label class="btn ghost-btn">Restore backup<input type="file" id="restoreFile" accept=".json,application/json" class="sr"></label>
       </div>
       <form class="inline-form" id="paintingForm" hidden>
         <label class="small muted" for="paintingName" id="paintingFormLbl">Painting name</label>
@@ -1072,7 +1086,7 @@ footer a { color: var(--accent); }
     const sel = $("paintingSel");
     sel.innerHTML = list.length ? list.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join("") : '<option value="">My painting (new)</option>';
     if (cur) sel.value = cur.id;
-    ["renamePainting", "deletePainting", "copyList", "downloadList"].forEach(id => $(id).disabled = !cur);
+    ["renamePainting", "deletePainting", "copyList", "printChart", "dlHtml", "dlText"].forEach(id => $(id).disabled = !cur || (id !== "renamePainting" && id !== "deletePainting" && !cur.colors.length));
     if (!confirmingDelete) $("deletePainting").textContent = "Delete painting";
     updateSaveLabel();
     if (Paintings.mode !== "loading") {
@@ -1305,15 +1319,144 @@ footer a { color: var(--accent); }
       navigator.clipboard.writeText(text).then(() => { box.hidden = true; status("chartStatus", `Copied ${p.colors.length} colours from ${p.name}.`); }, fallback);
     } catch (e) { fallback(); }
   });
-  let downloads = null;
-  $("downloadList").addEventListener("click", async () => {
-    const p = currentPainting(); if (!p || !downloads) return;
-    try { await downloads.save({ filename: `${p.name.replace(/[\\/:*?"<>|]+/g, "-")} colour mixes.txt`, data: chartText(p) }); }
-    catch (e) { if (e && e.code !== "declined") status("chartStatus", "The download didn't start. Use Copy list instead.", true); }
-  });
-  if (window.claude && typeof window.claude.use === "function") {
-    window.claude.use("downloads").then(d => { downloads = d; $("downloadList").hidden = !d; }).catch(() => {});
+  // ---------- save & print ----------
+  // A standalone, printer-friendly page for one painting's chart.
+  function printableHtml(p, autoPrint) {
+    const strings = stringsOf(p).filter(s => p.colors.some(c => c.id === s.baseId));
+    const num = new Map(p.colors.map((c, i) => [c.id, i + 1]));
+    const sw = (rgb, lbl) => `<span class="sw" style="background:${css(rgb)}"><i>${lbl}</i></span>`;
+    const recipe = (c, base) => (base ? [`${c.baseParts} ${partsWord(c.baseParts)} ${esc(base.name)} (base)`] : [])
+      .concat(c.recipe.map(r => `${r.parts} ${partsWord(r.parts)} ${esc(r.name)}`)).join("<br>");
+    const row = (c, role, base) => `<tr>
+        <td class="n">${num.get(c.id)}</td>
+        <td class="sws">${sw(c.rgb, "Mix")}${c.target ? sw(c.target, "Photo") : ""}</td>
+        <td><b>${esc(c.name)}</b>${role === "base" ? ' <span class="tag">Base</span>' : ""}
+          <div class="meta">${hex(c.rgb)} · L* ${toLab(c.rgb)[0].toFixed(0)}${c.de != null ? ` · ΔE ${c.de.toFixed(1)} vs photo` : ""}</div></td>
+        <td>${recipe(c, role === "shade" ? base : null)}</td>
+      </tr>`;
+    const table = rows => `<table><thead><tr><th>#</th><th>Swatch</th><th>Colour</th><th>Recipe (parts)</th></tr></thead><tbody>${rows}</tbody></table>`;
+    const sections = strings.map(s => {
+      const base = p.colors.find(c => c.id === s.baseId), shades = shadesOf(p, base.id).sort(byLight);
+      return `<section class="string">
+        <h2>${esc(s.name)} <small>colour string · base ${esc(base.name)} · ${shades.length} ${shades.length === 1 ? "shade" : "shades"}</small></h2>
+        <div class="ramp">${[base].concat(shades).sort(byLight).map(c => `<i style="background:${css(c.rgb)}"></i>`).join("")}</div>
+        ${table(row(base, "base") + shades.map(c => row(c, "shade", base)).join(""))}
+        <div class="plan">${planHtml(p, s)}</div>
+      </section>`;
+    });
+    const loose = p.colors.filter(c => !c.parentId && !strings.some(s => s.baseId === c.id));
+    if (loose.length) sections.push(`<section><h2>${strings.length ? "Other colours" : "Colours"}</h2>${table(loose.map(c => row(c, "loose")).join(""))}</section>`);
+    const date = new Date().toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(p.name)}: colour chart</title>
+<style>
+  @page { margin: 14mm; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { font: 13px/1.4 "Segoe UI", system-ui, -apple-system, sans-serif; color: #1b1c1e; background: #fff; margin: 0 auto; padding: 24px; max-width: 900px; }
+  header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #1b1c1e; padding-bottom: 8px; margin-bottom: 18px; gap: 12px; flex-wrap: wrap; }
+  h1 { font: 400 26px Georgia, "Times New Roman", serif; margin: 0; }
+  header span { color: #5b5e63; }
+  h2 { font: 400 19px Georgia, "Times New Roman", serif; margin: 0 0 8px; }
+  h2 small { font: 12px "Segoe UI", system-ui, sans-serif; color: #5b5e63; margin-left: 6px; }
+  section { margin-bottom: 26px; }
+  .ramp { display: flex; height: 26px; border-radius: 4px; overflow: hidden; border: 1px solid #bbb; margin-bottom: 10px; max-width: 420px; }
+  .ramp i { flex: 1; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #5b5e63; border-bottom: 1px solid #999; padding: 4px 6px; }
+  td { border-bottom: 1px solid #ddd; padding: 6px; vertical-align: top; }
+  tr { break-inside: avoid; page-break-inside: avoid; }
+  td.n { color: #5b5e63; font-variant-numeric: tabular-nums; width: 28px; }
+  td.sws { white-space: nowrap; width: 110px; }
+  .sw { display: inline-flex; align-items: flex-end; width: 46px; height: 34px; border: 1px solid #999; border-radius: 3px; margin-right: 4px; padding: 2px 3px; }
+  .sw i { font: 700 7px "Segoe UI", sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #fff; text-shadow: 0 0 2px #000; font-style: normal; }
+  .meta { color: #5b5e63; font: 11px Consolas, "Cascadia Mono", monospace; margin-top: 2px; }
+  .tag { font-size: 9px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; border: 1px solid #1b1c1e; border-radius: 99px; padding: 1px 6px; }
+  .plan { margin-top: 10px; padding: 8px 12px; border: 1px solid #ccc; border-radius: 6px; break-inside: avoid; page-break-inside: avoid; }
+  .plan p { margin: 0; } .plan ol { margin: 6px 0 0; padding-left: 20px; }
+  .bar { margin-bottom: 16px; } .bar button { font: inherit; padding: 6px 14px; cursor: pointer; }
+  footer { color: #5b5e63; font-size: 11px; border-top: 1px solid #ccc; padding-top: 6px; }
+  @media print { .bar { display: none; } body { padding: 0; } }
+</style></head><body>
+<div class="bar"><button onclick="print()">Print or save as PDF</button></div>
+<header><h1>${esc(p.name)}</h1><span>Colour chart · ${p.colors.length} colours · ${esc(date)}</span></header>
+${sections.join("\n")}
+<footer>Made with Paint Mixing Bench. Swatches are screen colours and will print differently on paper; use the recipes as your guide.</footer>
+${autoPrint ? '<script>addEventListener("load", function () { setTimeout(function () { print(); }, 300); });<\/script>' : ""}
+</body></html>`;
   }
+
+  let downloads = null;
+  const fileBase = p => p.name.replace(/[\\/:*?"<>|]+/g, "-").trim() || "Painting";
+  async function saveFile(filename, data, mime, okMsg) {
+    if (downloads) {
+      try { await downloads.save({ filename, data }); if (okMsg) status("chartStatus", okMsg); }
+      catch (e) { if (e && e.code !== "declined") status("chartStatus", "The download didn't start. Try Copy list instead.", true); }
+      return;
+    }
+    if (window.claude) { status("chartStatus", "Downloads aren't available in this view. Use Copy list instead.", true); return; }
+    const url = URL.createObjectURL(new Blob([data], { type: mime }));
+    const a = document.createElement("a"); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    if (okMsg) status("chartStatus", okMsg);
+  }
+  if (window.claude && typeof window.claude.use === "function") {
+    window.claude.use("downloads").then(d => { downloads = d; }).catch(() => {});
+  }
+
+  $("printChart").addEventListener("click", () => {
+    const p = currentPainting(); if (!p) return;
+    let w = null;
+    try { w = window.open("", "_blank"); } catch (e) {}
+    if (w) { w.document.open(); w.document.write(printableHtml(p, true)); w.document.close(); return; }
+    saveFile(`${fileBase(p)} colour chart.html`, printableHtml(p, false), "text/html",
+      "This view can't open the print dialog, so the printable page was downloaded. Open it in your browser and press Print or save as PDF.");
+  });
+  $("dlHtml").addEventListener("click", () => {
+    const p = currentPainting(); if (!p) return;
+    saveFile(`${fileBase(p)} colour chart.html`, printableHtml(p, false), "text/html", "Saved the printable page. Open it in your browser to print it or save it as a PDF.");
+  });
+  $("dlText").addEventListener("click", () => {
+    const p = currentPainting(); if (!p) return;
+    saveFile(`${fileBase(p)} colour mixes.txt`, chartText(p), "text/plain", `Saved ${p.name} as a text file.`);
+  });
+
+  // ---------- backup & restore (all paintings, as JSON) ----------
+  $("dlBackup").addEventListener("click", () => {
+    const list = Paintings.list;
+    if (!list.length) { status("chartStatus", "There's nothing to back up yet. Save a colour first.", true); return; }
+    const data = JSON.stringify({ app: "paint-mixing-bench", version: 1, exported: new Date().toISOString(), paintings: list }, null, 2);
+    saveFile(`Paint Mixing Bench backup ${new Date().toISOString().slice(0, 10)}.json`, data, "application/json",
+      `Backed up ${list.length} ${list.length === 1 ? "painting" : "paintings"}. Use Restore backup to load them on another device or browser.`);
+  });
+  const okId = id => typeof id === "string" && /^[A-Za-z0-9_.~:@+-]{1,120}$/.test(id);
+  const okRgb = v => Array.isArray(v) && v.length === 3 && v.every(n => typeof n === "number" && n >= 0 && n <= 255);
+  function cleanPainting(p) {
+    if (!p || !okId(p.id) || typeof p.name !== "string" || !Array.isArray(p.colors)) return null;
+    const colors = p.colors.filter(c => c && okId(c.id) && typeof c.name === "string" && okRgb(c.rgb) && Array.isArray(c.recipe)
+      && c.recipe.every(r => r && typeof r.name === "string" && okRgb(r.rgb) && typeof r.parts === "number")
+      && (c.target == null || okRgb(c.target)));
+    const ids = new Set(colors.map(c => c.id));
+    return JSON.parse(JSON.stringify({
+      id: p.id, type: "painting", name: p.name.slice(0, 60), created: Number(p.created) || Date.now(),
+      colors: colors.filter(c => !c.parentId || ids.has(c.parentId)),
+      strings: (Array.isArray(p.strings) ? p.strings : []).filter(s => s && okId(s.id) && typeof s.name === "string" && ids.has(s.baseId))
+    }));
+  }
+  $("restoreFile").addEventListener("change", e => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    const r = new FileReader();
+    r.onload = () => {
+      let data = null; try { data = JSON.parse(r.result); } catch (err) {}
+      const items = (data && Array.isArray(data.paintings) ? data.paintings : []).map(cleanPainting).filter(Boolean);
+      if (!items.length) { status("chartStatus", "That file isn't a Paint Mixing Bench backup, or it has no paintings in it.", true); return; }
+      let added = 0, replaced = 0;
+      items.forEach(p => { if (Paintings.list.some(x => x.id === p.id)) replaced++; else added++; Paintings.save(p); });
+      status("chartStatus", `Restored ${items.length} ${items.length === 1 ? "painting" : "paintings"} from the backup (${added} new, ${replaced} replaced with the backup's version).`);
+    };
+    r.onerror = () => status("chartStatus", "Couldn't read that file. Try choosing it again.", true);
+    r.readAsText(f);
+  });
 
   // ---------- photo ----------
   const canvas = $("photoCanvas"), ctx = canvas.getContext("2d", { willReadFrequently: true });

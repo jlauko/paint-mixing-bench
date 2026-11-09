@@ -148,6 +148,15 @@ input[type="text"], select { font: inherit; font-size: 14px; color: var(--ink); 
 /* photo */
 .stage { position: relative; border-radius: 10px; overflow: hidden; background: var(--n5); touch-action: none; cursor: crosshair; }
 .stage canvas { display: block; width: 100%; height: auto; }
+.stage canvas.pixel { image-rendering: pixelated; }
+.zoomer { transform-origin: 0 0; will-change: transform; }
+.stage.panning { cursor: grabbing; }
+.zoom-ctl { position: absolute; top: 8px; right: 8px; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 9px; background: rgba(20,22,26,.72); color: #fff; cursor: default; }
+.zoom-ctl button { background: transparent; border: 0; color: #fff; min-width: 32px; height: 30px; padding: 0 8px; font-size: 16px; justify-content: center; }
+.zoom-ctl button:hover { background: rgba(255,255,255,.16); }
+.zoom-ctl button:disabled { opacity: .4; }
+.zoom-ctl output { font: 12px var(--f-mono); min-width: 46px; text-align: center; }
+.sample-box { position: absolute; border: 1.5px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.75), inset 0 0 0 1px rgba(0,0,0,.75); pointer-events: none; }
 .stage.drag::after { content: "Drop the photo to load it"; position: absolute; inset: 0; display: grid; place-items: center; background: rgba(20,30,80,.55); color: #fff; font-weight: 600; font-size: 16px; }
 .marker { position: absolute; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1.5px rgba(0,0,0,.7), inset 0 0 0 1.5px rgba(0,0,0,.7); pointer-events: none; }
 .target-row { display: grid; grid-template-columns: 54px minmax(0,1fr); gap: 12px; align-items: center; }
@@ -339,10 +348,18 @@ footer a { color: var(--accent); }
         </div>
       </div>
       <div class="stage" id="stage">
-        <canvas id="photoCanvas" aria-label="Reference photo. Click or drag to pick a colour."></canvas>
+        <div class="zoomer" id="zoomer"><canvas id="photoCanvas" aria-label="Reference photo. Click to pick a colour."></canvas></div>
+        <div class="sample-box" id="sampleBox" hidden></div>
         <div class="marker" id="marker"></div>
+        <div class="zoom-ctl" role="group" aria-label="Photo zoom">
+          <button type="button" id="zoomOut" aria-label="Zoom out">−</button>
+          <output id="zoomLvl" aria-live="polite">100%</output>
+          <button type="button" id="zoomIn" aria-label="Zoom in">+</button>
+          <button type="button" id="zoomFit" title="Show the whole photo">Fit</button>
+        </div>
       </div>
-      <p class="small muted" style="margin:0" id="photoCaption">Sample scene shown. Upload, drop or paste your own photo, then click or drag on it to pick a colour.</p>
+      <p class="small muted" style="margin:0"><span id="photoCaption">Sample scene shown. Upload, drop or paste your own photo, then click on it to pick a colour.</span>
+        Zoom with + and −, pinch, Ctrl + scroll, or double-click. When zoomed in, drag to move around.</p>
       <div class="target-row">
         <div class="target-sw" id="targetSw"></div>
         <div style="display:flex;flex-direction:column;gap:6px;min-width:0">
@@ -1492,11 +1509,11 @@ ${autoPrint ? '<script>addEventListener("load", function () { setTimeout(functio
     if (!file || !/^image\//.test(file.type)) return;
     const url = URL.createObjectURL(file), img = new Image();
     img.onload = () => {
-      const max = 1600, sc = Math.min(1, max / Math.max(img.width, img.height));
+      const max = 2800, sc = Math.min(1, max / Math.max(img.width, img.height)); // keep enough detail to zoom into
       canvas.width = Math.round(img.width * sc); canvas.height = Math.round(img.height * sc);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height); URL.revokeObjectURL(url);
-      $("photoCaption").textContent = `${file.name || "Pasted image"} · click or drag on it to pick a colour.`;
-      markerPos = null; $("marker").hidden = true;
+      $("photoCaption").textContent = `${file.name || "Pasted image"} · click on it to pick a colour.`;
+      markerPos = null; resetView();
       sampleAt(canvas.width/2, canvas.height/2);
     };
     img.onerror = () => { $("photoCaption").textContent = "That file couldn't be opened as an image. Try a JPG or PNG."; };
@@ -1511,10 +1528,54 @@ ${autoPrint ? '<script>addEventListener("load", function () { setTimeout(functio
     markerPos = [x, y]; placeMarker();
     setTarget([Math.round(R/n), Math.round(G/n), Math.round(B/n)], `picked at ${x}, ${y}`);
   }
+  // The marker and sample box sit outside the zoomed layer, so they keep their size; place them in stage pixels.
   function placeMarker() {
-    const m = $("marker"); if (!markerPos) { m.hidden = true; return; }
-    m.hidden = false; m.style.left = (100 * markerPos[0] / canvas.width) + "%"; m.style.top = (100 * markerPos[1] / canvas.height) + "%";
+    const m = $("marker"), box = $("sampleBox");
+    if (!markerPos) { m.hidden = true; box.hidden = true; return; }
+    const [W, H] = stageSize(), px = W / canvas.width * zoom; // screen pixels per photo pixel
+    const sx = panX + (markerPos[0] + 0.5) * px, sy = panY + (markerPos[1] + 0.5) * px;
+    const inView = sx >= 0 && sx <= W && sy >= 0 && sy <= H;
+    const r = Number($("sampleSize").value), size = (2 * r + 1) * px;
+    box.hidden = !inView || size < 8;
+    if (!box.hidden) Object.assign(box.style, { left: (sx - size / 2) + "px", top: (sy - size / 2) + "px", width: size + "px", height: size + "px" });
+    m.hidden = !inView || size >= 26; // once the sampled square is big enough, it is the marker
+    if (!m.hidden) { m.style.left = sx + "px"; m.style.top = sy + "px"; }
   }
+
+  // ---------- photo zoom & pan ----------
+  const stage = $("stage");
+  let zoom = 1, panX = 0, panY = 0;
+  const ZMAX = 16;
+  function stageSize() { const r = stage.getBoundingClientRect(); return [r.width, r.height]; }
+  function applyView() {
+    const [W, H] = stageSize();
+    panX = Math.min(0, Math.max(W - W * zoom, panX));
+    panY = Math.min(0, Math.max(H - H * zoom, panY));
+    $("zoomer").style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+    $("zoomLvl").textContent = Math.round(zoom * 100) + "%";
+    canvas.classList.toggle("pixel", zoom * W / canvas.width >= 3); // crisp pixels once each covers ~3 screen pixels
+    $("zoomOut").disabled = $("zoomFit").disabled = zoom <= 1.001;
+    $("zoomIn").disabled = zoom >= ZMAX - 0.001;
+    placeMarker();
+  }
+  function zoomAt(z, cx, cy) { // (cx, cy) in stage pixels stays under the pointer
+    z = Math.max(1, Math.min(ZMAX, z));
+    panX = cx - (cx - panX) * z / zoom; panY = cy - (cy - panY) * z / zoom; zoom = z;
+    applyView();
+  }
+  function resetView() { zoom = 1; panX = panY = 0; applyView(); }
+  function zoomFocus() { // zoom toward the picked spot when it is on screen, else the middle
+    const [W, H] = stageSize();
+    if (markerPos) {
+      const px = W / canvas.width * zoom, sx = panX + (markerPos[0] + 0.5) * px, sy = panY + (markerPos[1] + 0.5) * px;
+      if (sx >= 0 && sx <= W && sy >= 0 && sy <= H) return [sx, sy];
+    }
+    return [W / 2, H / 2];
+  }
+  $("zoomIn").addEventListener("click", () => zoomAt(zoom * 2, ...zoomFocus()));
+  $("zoomOut").addEventListener("click", () => zoomAt(zoom / 2, ...zoomFocus()));
+  $("zoomFit").addEventListener("click", resetView);
+  window.addEventListener("resize", applyView);
   function setTarget(rgb, label, skipRender) {
     target = { rgb, label };
     $("targetSw").style.background = css(rgb);
@@ -1523,13 +1584,56 @@ ${autoPrint ? '<script>addEventListener("load", function () { setTimeout(functio
     $("solve").disabled = false;
     if (!skipRender) renderCompare();
   }
-  const stage = $("stage");
   function evtPos(e) { const r = canvas.getBoundingClientRect(); return [(e.clientX - r.left) * canvas.width / r.width, (e.clientY - r.top) * canvas.height / r.height]; }
-  let dragging = false;
-  stage.addEventListener("pointerdown", e => { dragging = true; stage.setPointerCapture(e.pointerId); sampleAt(...evtPos(e)); });
-  stage.addEventListener("pointermove", e => { if (dragging) sampleAt(...evtPos(e)); });
-  stage.addEventListener("pointerup", () => dragging = false);
-  stage.addEventListener("pointercancel", () => dragging = false);
+  // At 100% a drag keeps picking; zoomed in, a drag moves the photo and a click picks. Two fingers pinch-zoom.
+  const pointers = new Map();
+  let gesture = null;
+  stage.addEventListener("pointerdown", e => {
+    if (e.target.closest(".zoom-ctl")) return;
+    try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+    pointers.set(e.pointerId, [e.clientX, e.clientY]);
+    if (pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      gesture = { mode: "pinch", dist: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, z: zoom };
+      return;
+    }
+    if (pointers.size > 2) return;
+    gesture = zoom > 1.001 ? { mode: "maybe", x: e.clientX, y: e.clientY, px: panX, py: panY } : { mode: "sample" };
+    if (gesture.mode === "sample") sampleAt(...evtPos(e));
+  });
+  stage.addEventListener("pointermove", e => {
+    if (!pointers.has(e.pointerId) || !gesture) return;
+    pointers.set(e.pointerId, [e.clientX, e.clientY]);
+    if (gesture.mode === "pinch" && pointers.size >= 2) {
+      const [a, b] = [...pointers.values()], r = stage.getBoundingClientRect();
+      zoomAt(gesture.z * Math.hypot(a[0] - b[0], a[1] - b[1]) / gesture.dist, (a[0] + b[0]) / 2 - r.left, (a[1] + b[1]) / 2 - r.top);
+    } else if (gesture.mode === "sample") sampleAt(...evtPos(e));
+    else if (gesture.mode === "maybe" || gesture.mode === "pan") {
+      const dx = e.clientX - gesture.x, dy = e.clientY - gesture.y;
+      if (gesture.mode === "maybe" && Math.hypot(dx, dy) > 4) { gesture.mode = "pan"; stage.classList.add("panning"); }
+      if (gesture.mode === "pan") { panX = gesture.px + dx; panY = gesture.py + dy; applyView(); }
+    }
+  });
+  function endPointer(e, cancelled) {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.delete(e.pointerId);
+    if (gesture && gesture.mode === "maybe" && !cancelled) sampleAt(...evtPos(e));
+    if (!pointers.size) { gesture = null; stage.classList.remove("panning"); }
+    else if (gesture && gesture.mode === "pinch") gesture = { mode: "settle" }; // ignore the last finger until it lifts
+  }
+  stage.addEventListener("pointerup", e => endPointer(e, false));
+  stage.addEventListener("pointercancel", e => endPointer(e, true));
+  stage.addEventListener("wheel", e => {
+    if (!e.ctrlKey && !e.metaKey) return; // a plain scroll still scrolls the page; trackpad pinch arrives as Ctrl + wheel
+    e.preventDefault();
+    const r = stage.getBoundingClientRect();
+    zoomAt(zoom * Math.exp(-e.deltaY * 0.0025), e.clientX - r.left, e.clientY - r.top);
+  }, { passive: false });
+  stage.addEventListener("dblclick", e => {
+    if (e.target.closest(".zoom-ctl")) return;
+    const r = stage.getBoundingClientRect();
+    zoomAt(zoom * 2, e.clientX - r.left, e.clientY - r.top);
+  });
   stage.addEventListener("dragover", e => { e.preventDefault(); stage.classList.add("drag"); });
   stage.addEventListener("dragleave", () => stage.classList.remove("drag"));
   stage.addEventListener("drop", e => { e.preventDefault(); stage.classList.remove("drag"); loadImageFile(e.dataTransfer.files[0]); });
@@ -1552,6 +1656,7 @@ ${autoPrint ? '<script>addEventListener("load", function () { setTimeout(functio
 
   // ---------- boot ----------
   drawSampleScene();
+  resetView();
   renderTicks();
   renderAll();
   renderChart();
